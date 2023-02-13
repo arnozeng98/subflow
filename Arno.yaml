@@ -30,7 +30,7 @@ dns:
       - +.youtube.com
       - +.tiktok.com
 proxies:
-  - {"type":"vless","name":"🇺🇸Arno Private","server":"private.arnoarno.com","port":443,"uuid":"03b80e73-1b7d-4eff-a32c-5073f4e7e50e","tls":false,"flow":"xtls-rprx-direct","xtls":true}
+  - {"type":"vless","name":"🇺🇸Arno Private","server":"private.arnoarno.com","port":443,"uuid":"03b80e73-1b7d-4eff-a32c-5073f4e7e50e","tls":true,"flow":"xtls-rprx-direct","xtls":true}
 proxy-groups:
   - name: 🚀 节点选择
     type: select
