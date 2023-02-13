@@ -37,39 +37,39 @@ proxy-groups:
     proxies:
       - ♻️ 自动选择
       - DIRECT
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: ♻️ 自动选择
     type: url-test
     url: http://www.gstatic.com/generate_204
     interval: 300
     tolerance: 50
     proxies:
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: 🌍 国外媒体
     type: select
     proxies:
       - 🚀 节点选择
       - ♻️ 自动选择
       - 🎯 全球直连
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: 📲 电报信息
     type: select
     proxies:
       - 🚀 节点选择
       - 🎯 全球直连
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: Ⓜ️ 微软服务
     type: select
     proxies:
       - 🎯 全球直连
       - 🚀 节点选择
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: 🍎 苹果服务
     type: select
     proxies:
       - 🚀 节点选择
       - 🎯 全球直连
-      - Arno Private
+      - 🇺🇸Arno Private
   - name: 🎯 全球直连
     type: select
     proxies:
@@ -92,7 +92,7 @@ proxy-groups:
       - 🚀 节点选择
       - 🎯 全球直连
       - ♻️ 自动选择
-      - Arno Private
+      - 🇺🇸Arno Private
 
 rules:
 # 本地/局域网地址
