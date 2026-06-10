@@ -1,0 +1,43 @@
+# ============================================================
+# Cloudflare Pages local development variables (.dev.vars)
+# ============================================================
+# Copy this file to `.dev.vars` for `wrangler pages dev`. In production, set the
+# sensitive values as Pages *secrets* (Dashboard > Settings > Environment
+# variables, type "Secret") rather than committing them anywhere.
+# ============================================================
+
+# --- VPS data API connection ---
+# Base URL of the private VPS data API (the subflow service).
+VPS_API_BASE_URL=https://api.example.com
+# SECRET. Bearer token; must match SUBFLOW_API_TOKEN on the VPS.
+VPS_API_BEARER_TOKEN=replace-me
+# Path template for the raw data endpoint. {user} is URL-encoded.
+VPS_RAW_PATH_TEMPLATE=/internal/raw/{user}
+
+# --- Request & cache tuning (optional) ---
+REQUEST_TIMEOUT_MS=8000
+# How long fetched templates are cached in the Cloudflare Cache API (seconds).
+TEMPLATE_CACHE_TTL_SECONDS=21600
+# Cache-Control for subscription responses. Defaults to a sensible edge cache.
+# RESPONSE_CACHE_CONTROL=public, s-maxage=21600, max-age=0
+
+# --- Presentation (optional) ---
+SUBFLOW_PROFILE_NAME=Subflow
+SUBFLOW_DEFAULT_FORMAT=universal
+
+# --- Optional base template overrides ---
+# Leave empty to use the built-in complete skeletons. If set, the URL is fetched
+# (and Cache-API cached) and used as the base template for that format.
+SUBFLOW_CLASH_TEMPLATE_URL=
+SUBFLOW_SINGBOX_TEMPLATE_URL=
+SUBFLOW_SURGE_TEMPLATE_URL=
+SUBFLOW_QUANTUMULTX_TEMPLATE_URL=
+SUBFLOW_SHADOWROCKET_TEMPLATE_URL=
+
+# --- Official rule sources (optional overrides) ---
+# Generated configs reference these continuously-updated sources. Override only
+# to pin a mirror or a specific version.
+# SUBFLOW_CLASH_RULES_BASE=https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release
+# SUBFLOW_SINGBOX_GEOSITE_BASE=https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set
+# SUBFLOW_SINGBOX_GEOIP_BASE=https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set
+# SUBFLOW_BLACKMATRIX7_BASE=https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule

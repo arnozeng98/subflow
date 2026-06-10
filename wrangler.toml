@@ -1,0 +1,12 @@
+name = "subflow"
+compatibility_date = "2026-06-08"
+
+# Secrets (VPS_API_BASE_URL, VPS_API_BEARER_TOKEN) must NOT live here. Set them
+# as Cloudflare Pages secrets. Only non-sensitive defaults belong in [vars];
+# every value is also overridable per-environment in the dashboard.
+[vars]
+VPS_RAW_PATH_TEMPLATE = "/internal/raw/{user}"
+REQUEST_TIMEOUT_MS = "8000"
+TEMPLATE_CACHE_TTL_SECONDS = "21600"
+SUBFLOW_PROFILE_NAME = "Subflow"
+SUBFLOW_DEFAULT_FORMAT = "universal"
