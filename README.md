@@ -15,8 +15,8 @@ Two clearly separated parts:
 ```
 client ──> Cloudflare Pages (/<user>?format=…) ──> VPS data API (/internal/raw/<user>)
                   │                                         │
-                  │  builds full config from               │  reads upstream
-                  │  official rule sources                 ▼
+                  │  builds full config from                │  reads upstream
+                  │  official rule sources                  ▼
                   ▼                                  /etc/sing-box/config.json
             subscription                            /etc/sing-box-manager/*.json
 ```
