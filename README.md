@@ -46,9 +46,13 @@ wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/
 # Afterwards, run `sf` anytime to open the management menu.
 
 # 2) Cloudflare gateway — either let the installer do it automatically
-#    (one command, Wrangler Direct Upload, no fork / no GitHub token, just a
-#    Cloudflare API token), or run it later with:
+#    (one command, Wrangler Direct Upload, no fork / no GitHub token), or later:
 sf deploy
+#    It also installs cloudflared and creates a Cloudflare Tunnel so the
+#    localhost API is reachable without opening any inbound port (the VPS :443
+#    used by sing-box stays free). The API token needs 4 permissions:
+#    Account → Cloudflare Pages → Edit, Account → Cloudflare Tunnel → Edit,
+#    Zone → DNS → Edit, Zone → Zone → Read.
 #    Manual dashboard/CLI setup is also documented (see docs/03 and docs/04).
 ```
 

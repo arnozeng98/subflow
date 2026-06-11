@@ -26,6 +26,7 @@ The wizard prompts (each with an explanation and default) for:
 - **Cloudflare API Token** — create one at *My Profile → API Tokens* with a
    **Custom token**. Minimum permissions for this script are:
    - *Account → Cloudflare Pages → Edit*
+   - *Account → Cloudflare Tunnel → Edit* (create the tunnel that exposes the API)
    - *Zone → DNS → Edit*
    - *Zone → Zone → Read* (needed to look up the zone id by domain name)
 
@@ -38,21 +39,28 @@ The wizard prompts (each with an explanation and default) for:
 - **Account ID** — *Workers & Pages → Account ID* (right sidebar).
 - **Root domain** — e.g. `example.com` (must be a zone in this account).
 - **Subscription host** — default `subflow.<root>`; the public URL clients use.
-- **API host** — default `api.<subscription host>`; A record → VPS origin,
-  created **grey-cloud (proxied=false)** so Pages can reach the origin.
-- **Origin IP** — defaults to the auto-detected public IP of this VPS.
+- **API host** — default `api.<subscription host>`; exposed through a Cloudflare
+  Tunnel (orange-cloud CNAME → `<tunnel-id>.cfargotunnel.com`) so Pages can reach
+  the localhost API without opening any inbound port.
 - **Project name** — default `subflow`.
 
 If you prefer to set the token manually in the dashboard, the same permission
 set above applies: one token is enough to create the Pages project, attach the
-domain, and manage the DNS record.
+domain, create the tunnel, and manage the DNS record.
 
-It then verifies the token, ensures the Pages project exists, uploads the assets,
-sets the `VPS_API_BASE_URL` / `VPS_API_BEARER_TOKEN` secrets, creates the DNS
-record, attaches the custom domain, and prints the subscription URL.
+It then verifies the token, ensures the Pages project exists, sets the
+`VPS_API_BASE_URL` / `VPS_API_BEARER_TOKEN` secrets, uploads the assets, installs
+`cloudflared` and creates/configures a named tunnel for the API host, points DNS
+at the tunnel, attaches the subscription custom domain, and prints the
+subscription URL.
 
 Requires Node.js 18+ / `npx` on the VPS; the wizard offers to install Node 20 via
-NodeSource if missing.
+NodeSource if missing. `cloudflared` is installed automatically.
+
+> Why a tunnel and not a reverse proxy? The data API binds to `127.0.0.1` only,
+> and the VPS usually already serves the sing-box node on `:443`. `cloudflared`
+> dials **out** to Cloudflare, so no inbound port is opened and the node's `:443`
+> is left untouched.
 
 ## Option B — Dashboard
 

@@ -99,9 +99,13 @@ ask() {
 # ----- Main wizard -----------------------------------------------------------
 collect_inputs() {
   printf '%b\n' ""
-  step "Cloudflare 自动部署向导（直传方式，无需 fork、无需 GitHub Token）"
-  printf '%b\n' "  ${C_GREY}需要一个 Cloudflare API Token，权限：Account → Cloudflare Pages → Edit，"
-  printf '%b\n' "  以及 Zone → DNS → Edit（用于自动创建 api 子域解析）。Token 不会写入磁盘。${C_RESET}"
+  step "Cloudflare 自动部署向导（直传 + Cloudflare Tunnel，无需 fork / GitHub Token）"
+  printf '%b\n' "  ${C_GREY}需要一个 Cloudflare API Token，共 4 项权限："
+  printf '%b\n' "  ${C_GREY}  • Account → Cloudflare Pages → Edit"
+  printf '%b\n' "  ${C_GREY}  • Account → Cloudflare Tunnel → Edit"
+  printf '%b\n' "  ${C_GREY}  • Zone → DNS → Edit"
+  printf '%b\n' "  ${C_GREY}  • Zone → Zone → Read"
+  printf '%b\n' "  ${C_GREY}Token 仅运行时使用，不会写入磁盘。${C_RESET}"
 
   ask CF_TOKEN "Cloudflare API Token" \
     "在 dash.cloudflare.com → 右上头像 → My Profile → API Tokens → Create Token 创建。" \
@@ -120,13 +124,8 @@ collect_inputs() {
     "subflow.${ROOT_DOMAIN}"
 
   ask API_HOST "API 子域 (面向 Pages 回源)" \
-    "Pages 用它来访问本 VPS 的数据 API，将解析到本机公网 IP。例如 api.${SUB_HOST}" \
+    "Pages 用它访问本 VPS 的数据 API。将通过 Cloudflare Tunnel 回源到本机，无需开放任何入站端口。例如 api.${SUB_HOST}" \
     "api.${SUB_HOST}"
-
-  local ip_guess; ip_guess="$(detect_public_ip)"
-  ask ORIGIN_IP "本 VPS 公网 IP" \
-    "api 子域将解析到这个地址（即 Pages 回源访问的目标）。" \
-    "${ip_guess}"
 
   ask PROJECT_NAME "Pages 项目名" \
     "Cloudflare Pages 项目的名称（小写字母/数字/连字符）。" \
@@ -139,6 +138,8 @@ collect_inputs() {
     CF_BEARER="$(generate_token)"
     warn "未找到现有 VPS Token，已生成一个新的（请确保 VPS 端也使用它）。"
   fi
+  # Local origin the tunnel forwards to (the data API binds here).
+  ORIGIN_URL="http://${CFG_VALUE[SUBFLOW_LISTEN_HOST]:-127.0.0.1}:${CFG_VALUE[SUBFLOW_LISTEN_PORT]:-28080}"
 }
 
 confirm_inputs() {
@@ -147,7 +148,7 @@ confirm_inputs() {
   printf '%b\n' "    ${C_GREY}Account ID${C_RESET}   = ${C_LAV}${CF_ACCOUNT_ID}${C_RESET}"
   printf '%b\n' "    ${C_GREY}根域名${C_RESET}       = ${C_LAV}${ROOT_DOMAIN}${C_RESET}"
   printf '%b\n' "    ${C_GREY}订阅子域${C_RESET}     = ${C_LAV}${SUB_HOST}${C_RESET}  ${C_GREY}(Pages)${C_RESET}"
-  printf '%b\n' "    ${C_GREY}API 子域${C_RESET}     = ${C_LAV}${API_HOST}${C_RESET}  ${C_GREY}→ ${ORIGIN_IP}${C_RESET}"
+  printf '%b\n' "    ${C_GREY}API 子域${C_RESET}     = ${C_LAV}${API_HOST}${C_RESET}  ${C_GREY}→ Tunnel → ${ORIGIN_URL}${C_RESET}"
   printf '%b\n' "    ${C_GREY}Pages 项目名${C_RESET} = ${C_LAV}${PROJECT_NAME}${C_RESET}"
   printf '%b\n' "    ${C_GREY}VPS_API_BASE_URL${C_RESET} = ${C_LAV}https://${API_HOST}${C_RESET}"
   printf '%b\n' ""
@@ -206,7 +207,7 @@ deploy_assets() {
   step "上传 Pages 资源（functions/）via Wrangler 直传…"
   ( cd "${PAGES_DIR}" && \
     CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-    npx --yes wrangler@3 pages deploy \
+    npx --yes wrangler@4 pages deploy \
       --project-name "${PROJECT_NAME}" \
       --branch main \
       --commit-dirty=true )
@@ -221,10 +222,10 @@ set_secrets() {
   local rc=0
   ( cd "${PAGES_DIR}" && \
     printf '%s' "https://${API_HOST}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@3 pages secret put VPS_API_BASE_URL --project-name "${PROJECT_NAME}" ) || rc=1
+      npx --yes wrangler@4 pages secret put VPS_API_BASE_URL --project-name "${PROJECT_NAME}" ) || rc=1
   ( cd "${PAGES_DIR}" && \
     printf '%s' "${CF_BEARER}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@3 pages secret put VPS_API_BEARER_TOKEN --project-name "${PROJECT_NAME}" ) || rc=1
+      npx --yes wrangler@4 pages secret put VPS_API_BEARER_TOKEN --project-name "${PROJECT_NAME}" ) || rc=1
   if [[ "${rc}" -eq 0 ]]; then
     ok "已设置 VPS_API_BASE_URL 与 VPS_API_BEARER_TOKEN。"
   else
@@ -232,24 +233,119 @@ set_secrets() {
   fi
 }
 
+# ----- Cloudflare Tunnel (exposes the localhost API without opening ports) ----
+# The data API binds to 127.0.0.1 only. The VPS likely already uses :443 for the
+# sing-box node, so a reverse proxy is not an option. cloudflared dials OUT to
+# Cloudflare, so no inbound port is opened and the node's :443 is untouched.
+
+ensure_cloudflared() {
+  if command -v cloudflared >/dev/null 2>&1; then
+    ok "cloudflared 已安装。"
+    return 0
+  fi
+  step "安装 cloudflared…"
+  local arch deb_arch
+  arch="$(uname -m)"
+  case "${arch}" in
+    x86_64|amd64) deb_arch="amd64" ;;
+    aarch64|arm64) deb_arch="arm64" ;;
+    armv7l|armhf) deb_arch="arm" ;;
+    *) deb_arch="" ;;
+  esac
+  if [[ -z "${deb_arch}" ]]; then
+    err "未知 CPU 架构 ${arch}，请手动安装 cloudflared 后重试。"
+    exit 1
+  fi
+  local base="https://github.com/cloudflare/cloudflared/releases/latest/download"
+  if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    local deb="/tmp/cloudflared-${deb_arch}.deb"
+    if curl -fsSL "${base}/cloudflared-linux-${deb_arch}.deb" -o "${deb}"; then
+      dpkg -i "${deb}" >/dev/null 2>&1 || apt-get -f install -y >/dev/null 2>&1
+      rm -f "${deb}"
+    fi
+  fi
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    # Fallback: drop the static binary in place.
+    curl -fsSL "${base}/cloudflared-linux-${deb_arch}" -o /usr/local/bin/cloudflared
+    chmod +x /usr/local/bin/cloudflared
+  fi
+  if command -v cloudflared >/dev/null 2>&1; then
+    ok "cloudflared 安装完成。"
+  else
+    err "cloudflared 安装失败，请手动安装后重试。"
+    exit 1
+  fi
+}
+
+ensure_tunnel() {
+  step "创建/复用 Cloudflare Tunnel（${PROJECT_NAME}）…"
+  # Reuse an existing tunnel by name if present (not deleted).
+  local resp
+  resp="$(cf_api "${CF_TOKEN}" GET "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel?name=${PROJECT_NAME}&is_deleted=false")"
+  TUNNEL_ID="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
+  if [[ -z "${TUNNEL_ID}" ]]; then
+    local body
+    body="$(printf '{"name":"%s","config_src":"cloudflare"}' "${PROJECT_NAME}")"
+    resp="$(cf_api "${CF_TOKEN}" POST "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel" "${body}")"
+    TUNNEL_ID="$(json_get "${resp}" "d['result'].get('id','') if d.get('result') else ''")"
+  fi
+  if [[ -z "${TUNNEL_ID}" ]]; then
+    err "创建 Tunnel 失败：$(json_get "${resp}" "d.get('errors')")（请确认 Token 含 Account → Cloudflare Tunnel → Edit）。"
+    exit 1
+  fi
+  ok "Tunnel ID: ${TUNNEL_ID}"
+}
+
+configure_tunnel() {
+  step "配置 Tunnel 入口：${API_HOST} → ${ORIGIN_URL}…"
+  local body resp
+  body="$(printf '{"config":{"ingress":[{"hostname":"%s","service":"%s"},{"service":"http_status:404"}]}}' "${API_HOST}" "${ORIGIN_URL}")"
+  resp="$(cf_api "${CF_TOKEN}" PUT "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel/${TUNNEL_ID}/configurations" "${body}")"
+  if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
+    ok "Tunnel 入口已配置。"
+  else
+    err "配置 Tunnel 入口失败：$(json_get "${resp}" "d.get('errors')")。"
+    exit 1
+  fi
+}
+
+install_tunnel_service() {
+  step "安装并启动 cloudflared 系统服务…"
+  local resp token
+  resp="$(cf_api "${CF_TOKEN}" GET "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel/${TUNNEL_ID}/token")"
+  token="$(json_get "${resp}" "d.get('result','')")"
+  if [[ -z "${token}" ]]; then
+    err "获取 Tunnel 运行 Token 失败：$(json_get "${resp}" "d.get('errors')")。"
+    exit 1
+  fi
+  # Idempotent: remove any previous install before reinstalling with the token.
+  cloudflared service uninstall >/dev/null 2>&1 || true
+  if cloudflared service install "${token}" >/dev/null 2>&1; then
+    systemctl enable --now cloudflared >/dev/null 2>&1 || true
+    ok "cloudflared 服务已运行（仅出站连接，未开放任何入站端口）。"
+  else
+    warn "cloudflared 服务安装可能失败，可手动运行：cloudflared service install <token>。"
+  fi
+}
+
 ensure_dns_api() {
-  step "创建/更新 DNS：${API_HOST} → ${ORIGIN_IP}…"
-  # Look up existing record.
-  local resp rec_id
-  resp="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?type=A&name=${API_HOST}")"
+  step "创建/更新 DNS：${API_HOST} → Tunnel（CNAME，橙云）…"
+  # Point the api host at the tunnel. Orange-cloud (proxied) is required so
+  # Cloudflare terminates TLS and routes through the tunnel.
+  local resp rec_id body target
+  target="${TUNNEL_ID}.cfargotunnel.com"
+  resp="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?name=${API_HOST}")"
   rec_id="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
-  # api host is plain origin (grey cloud / proxied=false) so Pages can reach it.
-  local body
-  body="$(printf '{"type":"A","name":"%s","content":"%s","proxied":false,"ttl":120}' "${API_HOST}" "${ORIGIN_IP}")"
+  body="$(printf '{"type":"CNAME","name":"%s","content":"%s","proxied":true,"ttl":1}' "${API_HOST}" "${target}")"
   if [[ -n "${rec_id}" ]]; then
     resp="$(cf_api "${CF_TOKEN}" PUT "/zones/${ZONE_ID}/dns_records/${rec_id}" "${body}")"
   else
     resp="$(cf_api "${CF_TOKEN}" POST "/zones/${ZONE_ID}/dns_records" "${body}")"
   fi
   if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
-    ok "DNS 就绪（未开启橙云代理，便于 Pages 回源）。"
+    ok "DNS 就绪（${API_HOST} → ${target}）。"
   else
-    warn "DNS 设置可能失败：$(json_get "${resp}" "d.get('errors')")，可稍后在面板手动添加 A 记录。"
+    warn "DNS 设置可能失败：$(json_get "${resp}" "d.get('errors')")，可在面板手动添加 CNAME ${API_HOST} → ${target}。"
   fi
 }
 
@@ -296,8 +392,9 @@ print_result() {
   printf '%b\n' ""
   printf '%b\n' "  ${C_CYAN}订阅入口:${C_RESET} ${C_BOLD}https://${SUB_HOST}/<用户名>${C_RESET}"
   printf '%b\n' "  ${C_CYAN}例如:${C_RESET}    https://${SUB_HOST}/alice?format=clash"
-  printf '%b\n' "  ${C_CYAN}回源 API:${C_RESET} https://${API_HOST}  → 本 VPS"
-  printf '%b\n' "  ${C_GREY}提示：DNS/证书可能需要几分钟生效。以后更新可运行：sf → Cloudflare 重新部署${C_RESET}"
+  printf '%b\n' "  ${C_CYAN}回源 API:${C_RESET} https://${API_HOST}  → Cloudflare Tunnel → ${ORIGIN_URL}"
+  printf '%b\n' "  ${C_GREY}提示：Tunnel 仅出站连接，未开放任何入站端口，不影响节点 :443。${C_RESET}"
+  printf '%b\n' "  ${C_GREY}DNS/证书可能需要几分钟生效。以后更新可运行：sf → Cloudflare 重新部署${C_RESET}"
 }
 
 main() {
@@ -322,6 +419,11 @@ main() {
   # site returns 500 "Service unavailable" until the next deploy.
   set_secrets
   deploy_assets
+  # Expose the localhost API through a Cloudflare Tunnel (no inbound ports).
+  ensure_cloudflared
+  ensure_tunnel
+  configure_tunnel
+  install_tunnel_service
   ensure_dns_api
   attach_domain
   ensure_dns_sub

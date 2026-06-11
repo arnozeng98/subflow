@@ -93,10 +93,16 @@ A valid user returns JSON containing `inbounds`, `meta`, `public_ip`,
 
 ## Exposing the API to Cloudflare
 
-Cloudflare must reach this endpoint. Recommended: put it behind a reverse proxy
-(Caddy/Nginx) on a hostname with TLS, restricted to Cloudflare, e.g.
-`https://api.example.com` → `127.0.0.1:28080`. Keep the Bearer token secret; it
-is the only thing protecting the data API.
+Cloudflare must reach this endpoint, but the service binds to `127.0.0.1` only.
+The recommended (and automated) path is a **Cloudflare Tunnel**: `sf deploy`
+installs `cloudflared`, creates a named tunnel, and points `api.<host>` at it.
+
+A reverse proxy is intentionally **not** used: the VPS usually already serves the
+sing-box node on `:443`, so binding a proxy there would clash. `cloudflared`
+dials **out** to Cloudflare, so no inbound port is opened and the node's `:443`
+stays free. See [03 · Cloudflare deployment](03-cloudflare-deployment.md).
+
+Keep the Bearer token secret; it is the only thing protecting the data API.
 
 ## Service management
 
