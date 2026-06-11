@@ -17,6 +17,7 @@ import { fetchRawPayload } from "./_lib/raw-client.js";
 import { buildNodes } from "./_lib/protocol.js";
 import { negotiateFormat } from "./_lib/format.js";
 import { generate } from "./_lib/templates/index.js";
+import { buildSubscriptionUserinfo } from "./_lib/userinfo.js";
 import {
 	subscriptionResponse,
 	misconfiguredResponse,
@@ -64,7 +65,8 @@ export async function onRequestGet(context) {
 
 	try {
 		const { contentType, body } = await generate(format, nodes, config, raw, { waitUntil });
-		return subscriptionResponse(body, contentType, config.responseCacheControl);
+		const userinfo = buildSubscriptionUserinfo(raw?.usage);
+		return subscriptionResponse(body, contentType, config.responseCacheControl, userinfo);
 	} catch {
 		return upstreamErrorResponse();
 	}

@@ -12,14 +12,19 @@ const SECURITY_HEADERS = Object.freeze({
 });
 
 /** A successful subscription response with the negotiated content type. */
-export function subscriptionResponse(body, contentType, cacheControl) {
+export function subscriptionResponse(body, contentType, cacheControl, userinfo) {
+	const headers = {
+		"content-type": contentType || CONTENT_TYPE.PLAIN,
+		"cache-control": cacheControl || "no-store",
+		...SECURITY_HEADERS,
+	};
+	if (userinfo) {
+		// Standard quota/expiry meter consumed by Shadowrocket, Clash Verge, etc.
+		headers["subscription-userinfo"] = userinfo;
+	}
 	return new Response(body, {
 		status: 200,
-		headers: {
-			"content-type": contentType || CONTENT_TYPE.PLAIN,
-			"cache-control": cacheControl || "no-store",
-			...SECURITY_HEADERS,
-		},
+		headers,
 	});
 }
 

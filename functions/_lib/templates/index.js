@@ -49,7 +49,7 @@ export async function generate(format, nodes, config, raw, ctx) {
 		case FORMAT.QUANTUMULTX:
 			return generateQuantumultX(nodes, config);
 		case FORMAT.SHADOWROCKET:
-			return generateShadowrocket(nodes, config, raw?.usage);
+			return generateShadowrocket(nodes);
 		default:
 			return generateUniversal(nodes);
 	}

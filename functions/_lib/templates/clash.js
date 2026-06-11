@@ -82,6 +82,9 @@ function group(name, type, names, extra = "") {
 }
 
 function proxyGroupsBlock(names) {
+	// "🎯 全球直连" must stay a leaf selector (DIRECT/REJECT only). If it
+	// references "🚀 节点选择" while "🚀 节点选择" also lists "🎯 全球直连",
+	// Clash/Mihomo rejects the profile with "loop is detected in ProxyGroup".
 	const selectable = ["♻️ 自动选择", "🎯 全球直连", ...names];
 	const urlTestExtra =
 		"url: 'http://www.gstatic.com/generate_204'\ninterval: 300\ntolerance: 50";
@@ -92,7 +95,7 @@ function proxyGroupsBlock(names) {
 		group("📲 电报信息", "select", ["🚀 节点选择", "🎯 全球直连", ...names]),
 		group("Ⓜ️ 微软服务", "select", ["🎯 全球直连", "🚀 节点选择", ...names]),
 		group("🍎 苹果服务", "select", ["🎯 全球直连", "🚀 节点选择", ...names]),
-		group("🎯 全球直连", "select", ["DIRECT", "🚀 节点选择"]),
+		group("🎯 全球直连", "select", ["DIRECT", "REJECT"]),
 		group("🛑 全球拦截", "select", ["REJECT", "DIRECT"]),
 		group("🐟 漏网之鱼", "select", ["🚀 节点选择", "🎯 全球直连", "♻️ 自动选择", ...names]),
 	];

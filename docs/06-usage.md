@@ -63,9 +63,11 @@ For a client that needs an omitted protocol, use `universal` or `clash`/`singbox
 
 ## Traffic quota
 
-For Shadowrocket, the response includes a `STATUS=` userinfo line derived from the
-user's upstream quota, so the client can display remaining traffic when a quota is
-configured upstream.
+When a quota or expiry is configured upstream, the response carries a standard
+`Subscription-Userinfo` HTTP header (`upload`, `download`, `total`, `expire`).
+Clients that understand it — Shadowrocket, Clash Verge, Stash, sing-box — render
+a native traffic meter (auto-formatted GiB/MiB/KiB) and an expiry date, with no
+extra configuration.
 
 ## Caching behavior
 

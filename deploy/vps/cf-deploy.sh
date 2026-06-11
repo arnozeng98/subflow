@@ -275,22 +275,30 @@ ensure_cloudflared() {
     exit 1
   fi
   local base="https://github.com/cloudflare/cloudflared/releases/latest/download"
+  # Prefer the .deb (apt keeps it updated), but never let a failed download abort
+  # the whole script under `set -e`; fall back to the static binary, then verify
+  # the result actually runs before continuing.
   if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
     local deb="/tmp/cloudflared-${deb_arch}.deb"
-    if curl -fsSL "${base}/cloudflared-linux-${deb_arch}.deb" -o "${deb}"; then
-      dpkg -i "${deb}" >/dev/null 2>&1 || apt-get -f install -y >/dev/null 2>&1
+    if curl -fsSL --retry 3 "${base}/cloudflared-linux-${deb_arch}.deb" -o "${deb}" 2>/dev/null; then
+      dpkg -i "${deb}" >/dev/null 2>&1 || apt-get -f install -y >/dev/null 2>&1 || true
       rm -f "${deb}"
     fi
   fi
   if ! command -v cloudflared >/dev/null 2>&1; then
-    # Fallback: drop the static binary in place.
-    curl -fsSL "${base}/cloudflared-linux-${deb_arch}" -o /usr/local/bin/cloudflared
+    # Fallback: drop the static binary in place. Clean up a partial file so a
+    # half-written binary is never left behind on a flaky connection.
+    if ! curl -fsSL --retry 3 "${base}/cloudflared-linux-${deb_arch}" -o /usr/local/bin/cloudflared 2>/dev/null; then
+      rm -f /usr/local/bin/cloudflared
+      err "cloudflared 下载失败（无法连接 GitHub）。请检查 VPS 网络或手动安装后重跑 sf deploy。"
+      exit 1
+    fi
     chmod +x /usr/local/bin/cloudflared
   fi
-  if command -v cloudflared >/dev/null 2>&1; then
-    ok "cloudflared 安装完成。"
+  if cloudflared --version >/dev/null 2>&1; then
+    ok "cloudflared 安装完成（$(cloudflared --version 2>/dev/null | head -n1)）。"
   else
-    err "cloudflared 安装失败，请手动安装后重试。"
+    err "cloudflared 已下载但无法运行（架构 ${arch} 不匹配？）。请手动安装后重跑 sf deploy。"
     exit 1
   fi
 }
