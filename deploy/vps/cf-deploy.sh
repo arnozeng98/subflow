@@ -112,7 +112,7 @@ collect_inputs() {
     ""
 
   ask ROOT_DOMAIN "根域名 (Zone)" \
-    "你已托管在 Cloudflare 的主域名，例如 arnozeng.com。脚本会据此自动查 Zone ID。" \
+    "你已托管在 Cloudflare 的主域名，例如 example.com。脚本会据此自动查 Zone ID。" \
     ""
 
   ask SUB_HOST "订阅子域 (面向用户)" \
@@ -187,7 +187,8 @@ ensure_project() {
   resp="$(cf_api "${CF_TOKEN}" GET "/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}")"
   exists="$(json_get "${resp}" "d.get('success')")"
   if [[ "${exists}" == "True" ]]; then
-    ok "项目已存在，复用。"
+    PROJECT_SUBDOMAIN="$(json_get "${resp}" "d['result'].get('subdomain','') if d.get('result') else ''")"
+    ok "项目已存在，复用（${PROJECT_SUBDOMAIN:-未知子域}）。"
     return 0
   fi
   local body
@@ -197,14 +198,15 @@ ensure_project() {
     err "创建 Pages 项目失败：$(json_get "${resp}" "d.get('errors')")"
     exit 1
   fi
-  ok "项目已创建。"
+  PROJECT_SUBDOMAIN="$(json_get "${resp}" "d['result'].get('subdomain','') if d.get('result') else ''")"
+  ok "项目已创建（${PROJECT_SUBDOMAIN:-未知子域}）。"
 }
 
 deploy_assets() {
   step "上传 Pages 资源（functions/）via Wrangler 直传…"
   ( cd "${PAGES_DIR}" && \
     CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-    npx --yes wrangler@3 pages deploy . \
+    npx --yes wrangler@3 pages deploy \
       --project-name "${PROJECT_NAME}" \
       --branch main \
       --commit-dirty=true )
@@ -214,12 +216,20 @@ deploy_assets() {
 set_secrets() {
   step "写入 Pages 环境变量与机密…"
   # Secrets via wrangler (encrypted). Non-interactive: pipe value to stdin.
+  # Keep failures visible: missing secrets cause the live site to 500
+  # ("Service unavailable"), so surface a warning instead of swallowing errors.
+  local rc=0
   ( cd "${PAGES_DIR}" && \
     printf '%s' "https://${API_HOST}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@3 pages secret put VPS_API_BASE_URL --project-name "${PROJECT_NAME}" >/dev/null 2>&1 || true
+      npx --yes wrangler@3 pages secret put VPS_API_BASE_URL --project-name "${PROJECT_NAME}" ) || rc=1
+  ( cd "${PAGES_DIR}" && \
     printf '%s' "${CF_BEARER}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@3 pages secret put VPS_API_BEARER_TOKEN --project-name "${PROJECT_NAME}" >/dev/null 2>&1 || true )
-  ok "已设置 VPS_API_BASE_URL 与 VPS_API_BEARER_TOKEN。"
+      npx --yes wrangler@3 pages secret put VPS_API_BEARER_TOKEN --project-name "${PROJECT_NAME}" ) || rc=1
+  if [[ "${rc}" -eq 0 ]]; then
+    ok "已设置 VPS_API_BASE_URL 与 VPS_API_BEARER_TOKEN。"
+  else
+    warn "机密写入可能失败；若站点返回 Service unavailable，请检查 Token 权限后重跑 sf deploy。"
+  fi
 }
 
 ensure_dns_api() {
@@ -255,6 +265,31 @@ attach_domain() {
   fi
 }
 
+ensure_dns_sub() {
+  # Attaching the custom domain does NOT create the validating DNS record, so the
+  # domain stays "pending". Create/update a proxied CNAME SUB_HOST -> *.pages.dev
+  # to complete validation automatically.
+  if [[ -z "${PROJECT_SUBDOMAIN:-}" ]]; then
+    warn "未取得 Pages 子域，跳过订阅域 CNAME；请在面板手动添加 ${SUB_HOST} → <项目>.pages.dev。"
+    return 0
+  fi
+  step "创建/更新 DNS：${SUB_HOST} → ${PROJECT_SUBDOMAIN}（CNAME，橙云）…"
+  local resp rec_id body
+  resp="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?name=${SUB_HOST}")"
+  rec_id="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
+  body="$(printf '{"type":"CNAME","name":"%s","content":"%s","proxied":true,"ttl":1}' "${SUB_HOST}" "${PROJECT_SUBDOMAIN}")"
+  if [[ -n "${rec_id}" ]]; then
+    resp="$(cf_api "${CF_TOKEN}" PUT "/zones/${ZONE_ID}/dns_records/${rec_id}" "${body}")"
+  else
+    resp="$(cf_api "${CF_TOKEN}" POST "/zones/${ZONE_ID}/dns_records" "${body}")"
+  fi
+  if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
+    ok "订阅域 CNAME 就绪，Cloudflare 将自动完成校验与签发证书。"
+  else
+    warn "订阅域 CNAME 设置可能失败：$(json_get "${resp}" "d.get('errors')")，可在面板手动添加 CNAME ${SUB_HOST} → ${PROJECT_SUBDOMAIN}。"
+  fi
+}
+
 print_result() {
   printf '%b\n' ""
   ok "Cloudflare 部署完成啦～ ♡(◕‿◕)♡"
@@ -283,10 +318,13 @@ main() {
   verify_token
   resolve_zone
   ensure_project
-  deploy_assets
+  # Secrets must exist BEFORE the deployment that serves them, otherwise the live
+  # site returns 500 "Service unavailable" until the next deploy.
   set_secrets
+  deploy_assets
   ensure_dns_api
   attach_domain
+  ensure_dns_sub
   print_result
 }
 

@@ -23,9 +23,18 @@ sf deploy        # or: run install.sh and pick "VPS API + Cloudflare 自动部�
 
 The wizard prompts (each with an explanation and default) for:
 
-- **Cloudflare API Token** — create one at *My Profile → API Tokens* with
-  permissions: *Account → Cloudflare Pages → Edit* and *Zone → DNS → Edit*.
-  The token is used only at runtime and is never written to disk.
+- **Cloudflare API Token** — create one at *My Profile → API Tokens* with a
+   **Custom token**. Minimum permissions for this script are:
+   - *Account → Cloudflare Pages → Edit*
+   - *Zone → DNS → Edit*
+   - *Zone → Zone → Read* (needed to look up the zone id by domain name)
+
+   Recommended resources:
+   - *Account resources* → **Include** → your target account
+   - *Zone resources* → **Include** → your root domain zone (or all zones if you
+      want to reuse the token)
+
+   The token is used only at runtime and is never written to disk.
 - **Account ID** — *Workers & Pages → Account ID* (right sidebar).
 - **Root domain** — e.g. `example.com` (must be a zone in this account).
 - **Subscription host** — default `subflow.<root>`; the public URL clients use.
@@ -33,6 +42,10 @@ The wizard prompts (each with an explanation and default) for:
   created **grey-cloud (proxied=false)** so Pages can reach the origin.
 - **Origin IP** — defaults to the auto-detected public IP of this VPS.
 - **Project name** — default `subflow`.
+
+If you prefer to set the token manually in the dashboard, the same permission
+set above applies: one token is enough to create the Pages project, attach the
+domain, and manage the DNS record.
 
 It then verifies the token, ensures the Pages project exists, uploads the assets,
 sets the `VPS_API_BASE_URL` / `VPS_API_BEARER_TOKEN` secrets, creates the DNS
