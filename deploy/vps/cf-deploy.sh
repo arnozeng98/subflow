@@ -205,31 +205,49 @@ ensure_project() {
 
 deploy_assets() {
   step "上传 Pages 资源（functions/）via Wrangler 直传…"
+  # Isolate wrangler's config dir to a throwaway location. A pre-existing
+  # ~/.config/.wrangler (e.g. a stale OAuth login from earlier wrangler use)
+  # can take precedence over CLOUDFLARE_API_TOKEN and cause auth code 10001
+  # even when the token itself is valid. A clean XDG_CONFIG_HOME forces
+  # wrangler to fall back to the env token we pass in. Also drop any legacy
+  # CLOUDFLARE_API_KEY/EMAIL so they cannot shadow the token.
+  local cfg_home rc=0
+  cfg_home="$(mktemp -d)"
   ( cd "${PAGES_DIR}" && \
-    CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-    npx --yes wrangler@4 pages deploy \
-      --project-name "${PROJECT_NAME}" \
-      --branch main \
-      --commit-dirty=true )
+    env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_EMAIL \
+      CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
+      XDG_CONFIG_HOME="${cfg_home}" \
+      npx --yes wrangler@4 pages deploy \
+        --project-name "${PROJECT_NAME}" \
+        --branch main \
+        --commit-dirty=true ) || rc=$?
+  rm -rf "${cfg_home}"
+  if [[ "${rc}" -ne 0 ]]; then
+    err "Pages 资源上传失败（wrangler 退出码 ${rc}）。请确认 Token 含 Cloudflare Pages → Edit 后重跑 sf deploy。"
+    exit 1
+  fi
   ok "部署完成。"
 }
 
 set_secrets() {
-  step "写入 Pages 环境变量与机密…"
-  # Secrets via wrangler (encrypted). Non-interactive: pipe value to stdin.
-  # Keep failures visible: missing secrets cause the live site to 500
-  # ("Service unavailable"), so surface a warning instead of swallowing errors.
-  local rc=0
-  ( cd "${PAGES_DIR}" && \
-    printf '%s' "https://${API_HOST}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@4 pages secret put VPS_API_BASE_URL --project-name "${PROJECT_NAME}" ) || rc=1
-  ( cd "${PAGES_DIR}" && \
-    printf '%s' "${CF_BEARER}" | CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
-      npx --yes wrangler@4 pages secret put VPS_API_BEARER_TOKEN --project-name "${PROJECT_NAME}" ) || rc=1
-  if [[ "${rc}" -eq 0 ]]; then
+  step "写入 Pages 机密（VPS_API_BASE_URL / VPS_API_BEARER_TOKEN）…"
+  # Set secrets via the REST API instead of `wrangler pages secret put`.
+  # The REST path uses the same Bearer token that already authenticates here,
+  # avoiding wrangler's credential-resolution quirks (auth code 10001). The
+  # values are written as encrypted project-level production env vars, which
+  # the subsequent deploy inherits. Missing secrets make the live site return
+  # 500 ("Service unavailable"), so surface a warning instead of failing hard.
+  local body resp
+  body="$(python3 -c 'import json,sys
+print(json.dumps({"deployment_configs":{"production":{"env_vars":{
+  "VPS_API_BASE_URL":{"type":"secret_text","value":sys.argv[1]},
+  "VPS_API_BEARER_TOKEN":{"type":"secret_text","value":sys.argv[2]}}}}}))' \
+    "https://${API_HOST}" "${CF_BEARER}")"
+  resp="$(cf_api "${CF_TOKEN}" PATCH "/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}" "${body}")"
+  if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
     ok "已设置 VPS_API_BASE_URL 与 VPS_API_BEARER_TOKEN。"
   else
-    warn "机密写入可能失败；若站点返回 Service unavailable，请检查 Token 权限后重跑 sf deploy。"
+    warn "机密写入可能失败：$(json_get "${resp}" "d.get('errors')")。若站点返回 Service unavailable，请检查 Token 权限后重跑 sf deploy。"
   fi
 }
 
