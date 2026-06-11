@@ -130,6 +130,20 @@ print_done() {
   step "随时输入 ${C_BOLD}sf${C_RESET}${C_PINK} 呼出管理菜单 (查看状态/修改配置/开关/卸载) ♡${C_RESET}"
 }
 
+# Ask which parts to install. Sets INSTALL_MODE to "api" or "api+cf".
+choose_install_mode() {
+  printf '%b\n' ""
+  printf '%b\n' "  ${C_CYAN}${C_BOLD}请选择安装内容${C_RESET}"
+  printf '%b\n' "    ${C_LAV}1${C_RESET}) 仅安装 VPS 数据 API ${C_GREY}(默认; Cloudflare 之后可用 sf 部署)${C_RESET}"
+  printf '%b\n' "    ${C_LAV}2${C_RESET}) VPS 数据 API ${C_BOLD}+${C_RESET} Cloudflare 自动部署 ${C_GREY}(需 Cloudflare API Token)${C_RESET}"
+  printf '%b' "  ${C_PINK}选择${C_RESET} ${C_GREY}[回车=默认 1]${C_RESET}: "
+  local c; read -r c || c="1"
+  case "${c}" in
+    2) INSTALL_MODE="api+cf" ;;
+    *) INSTALL_MODE="api" ;;
+  esac
+}
+
 main() {
   trap cleanup_tmp EXIT
   require_root
@@ -138,6 +152,8 @@ main() {
 
   clear 2>/dev/null || true
   banner
+
+  choose_install_mode
 
   # If already installed, preload existing values so the wizard pre-fills them.
   if is_installed; then
@@ -166,6 +182,12 @@ main() {
   reload_and_restart
 
   print_done
+
+  if [[ "${INSTALL_MODE:-api}" == "api+cf" ]]; then
+    printf '%b\n' ""
+    step "进入 Cloudflare 自动部署…"
+    bash "${CLI_ROOT}/cf-deploy.sh" || warn "Cloudflare 部署未完成，可稍后运行 sf → Cloudflare 部署 重试。"
+  fi
 }
 
 main "$@"

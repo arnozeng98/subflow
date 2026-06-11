@@ -58,6 +58,10 @@ edit_one() {
     shown="${shown:0:6}…${shown: -4}"
   fi
   printf '%b\n' "    ${C_GREY}当前值：${shown:-(空)}${C_RESET}"
+  local def="${CFG_DEFAULT[$key]:-}"
+  if [[ -n "${def}" ]]; then
+    printf '%b\n' "    ${C_GREY}默认值：${def}${C_RESET}"
+  fi
   if [[ "${key}" == "SUBFLOW_API_TOKEN" ]]; then
     printf '%b' "    ${C_CYAN}输入新值${C_RESET} ${C_GREY}[回车=保留, g=重新生成]${C_RESET}: "
   else
@@ -155,6 +159,15 @@ do_logs() {
   journalctl -u subflow.service -f -n 50 || true
 }
 
+# ----- Cloudflare deploy -----------------------------------------------------
+do_cf_deploy() {
+  if [[ -x "${SCRIPT_DIR}/cf-deploy.sh" ]]; then
+    bash "${SCRIPT_DIR}/cf-deploy.sh" || warn "Cloudflare 部署未完成。"
+  else
+    err "未找到 cf-deploy.sh。请重新运行 install.sh 或 sf → 更新。"
+  fi
+}
+
 # ----- Main menu -------------------------------------------------------------
 main_menu() {
   while true; do
@@ -165,7 +178,8 @@ main_menu() {
     printf '%b\n' "    ${C_LAV}1${C_RESET}) 查看运行状态        ${C_LAV}2${C_RESET}) 查看详细信息(含完整 Token)"
     printf '%b\n' "    ${C_LAV}3${C_RESET}) 修改配置            ${C_LAV}4${C_RESET}) 服务开关(启停/自启)"
     printf '%b\n' "    ${C_LAV}5${C_RESET}) 实时日志            ${C_LAV}6${C_RESET}) 更新到最新版本"
-    printf '%b\n' "    ${C_LAV}7${C_RESET}) 卸载                ${C_LAV}0${C_RESET}) 退出"
+    printf '%b\n' "    ${C_LAV}7${C_RESET}) Cloudflare 部署/重新部署"
+    printf '%b\n' "    ${C_LAV}8${C_RESET}) 卸载                ${C_LAV}0${C_RESET}) 退出"
     printf '%b' "  ${C_PINK}请选择${C_RESET}: "
     local c; read -r c || c="0"
     case "${c}" in
@@ -175,7 +189,8 @@ main_menu() {
       4) switch_menu ;;
       5) do_logs ;;
       6) do_update; pause ;;
-      7) do_uninstall ;;
+      7) do_cf_deploy; pause ;;
+      8) do_uninstall ;;
       0) printf '%b\n' "  ${C_PINK}拜拜～ ♡ (＾▽＾)／${C_RESET}"; exit 0 ;;
       *) warn "无效选择，请重试。"; sleep 1 ;;
     esac
@@ -199,6 +214,7 @@ case "${1:-menu}" in
   restart)   do_restart ;;
   logs)      do_logs ;;
   update)    do_update ;;
+  deploy|cf) do_cf_deploy ;;
   uninstall) do_uninstall ;;
-  *)         err "未知命令：$1（可用：menu/status/info/edit/start/stop/restart/logs/update/uninstall）"; exit 1 ;;
+  *)         err "未知命令：$1（可用：menu/status/info/edit/start/stop/restart/logs/update/deploy/uninstall）"; exit 1 ;;
 esac

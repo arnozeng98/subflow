@@ -10,7 +10,38 @@ configurations are generated.
 - The VPS data API reachable over HTTPS (see [02 · VPS deployment](02-vps-deployment.md)).
 - The Bearer token printed by the VPS installer.
 
-## Option A — Dashboard (recommended)
+## Option A — Automated from the VPS installer (recommended)
+
+If you have already installed the VPS data API, you can deploy the Cloudflare
+Pages gateway from the same machine with **one command** — no fork and no GitHub
+token required. It uses Wrangler **Direct Upload**, sending the `functions/`
+directory that the installer already downloaded.
+
+```bash
+sf deploy        # or: run install.sh and pick "VPS API + Cloudflare 自动部署"
+```
+
+The wizard prompts (each with an explanation and default) for:
+
+- **Cloudflare API Token** — create one at *My Profile → API Tokens* with
+  permissions: *Account → Cloudflare Pages → Edit* and *Zone → DNS → Edit*.
+  The token is used only at runtime and is never written to disk.
+- **Account ID** — *Workers & Pages → Account ID* (right sidebar).
+- **Root domain** — e.g. `example.com` (must be a zone in this account).
+- **Subscription host** — default `subflow.<root>`; the public URL clients use.
+- **API host** — default `api.<subscription host>`; A record → VPS origin,
+  created **grey-cloud (proxied=false)** so Pages can reach the origin.
+- **Origin IP** — defaults to the auto-detected public IP of this VPS.
+- **Project name** — default `subflow`.
+
+It then verifies the token, ensures the Pages project exists, uploads the assets,
+sets the `VPS_API_BASE_URL` / `VPS_API_BEARER_TOKEN` secrets, creates the DNS
+record, attaches the custom domain, and prints the subscription URL.
+
+Requires Node.js 18+ / `npx` on the VPS; the wizard offers to install Node 20 via
+NodeSource if missing.
+
+## Option B — Dashboard
 
 1. **Create the project.** Cloudflare Dashboard → *Workers & Pages* → *Create* →
    *Pages* → *Connect to Git* → select this repository.
@@ -25,7 +56,7 @@ configurations are generated.
 4. **Deploy.** Trigger the first deployment.
 5. **Custom domain.** *Custom domains* → add e.g. `sub.example.com`.
 
-## Option B — Wrangler CLI
+## Option C — Wrangler CLI
 
 ```bash
 npm install -g wrangler

@@ -42,10 +42,14 @@ Full guides live in [docs/](docs/):
 wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/deploy/vps/install.sh && bash subflow-install.sh
 # The installer is interactive: it prompts for every setting (public IP, token,
 # paths, WS domains). Skipped items can be changed later from the menu.
+# Choose "VPS API only" or "VPS API + Cloudflare 自动部署" at the start.
 # Afterwards, run `sf` anytime to open the management menu.
 
-# 2) On Cloudflare: create a Pages project from this repo and set the secrets
-#    VPS_API_BASE_URL and VPS_API_BEARER_TOKEN (see docs/03 and docs/04).
+# 2) Cloudflare gateway — either let the installer do it automatically
+#    (one command, Wrangler Direct Upload, no fork / no GitHub token, just a
+#    Cloudflare API token), or run it later with:
+sf deploy
+#    Manual dashboard/CLI setup is also documented (see docs/03 and docs/04).
 ```
 
 ## Repository layout
@@ -57,6 +61,7 @@ wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/
 - [src/subflow/](src/subflow) — VPS data API (pure data, no rendering).
 - [deploy/vps/](deploy/vps) — interactive installer, `sf` management menu
   ([menu.sh](deploy/vps/menu.sh)), shared library ([lib.sh](deploy/vps/lib.sh)),
+  Cloudflare auto-deploy ([cf-deploy.sh](deploy/vps/cf-deploy.sh)),
   uninstaller, and env example.
 - [deploy/cloudflare/](deploy/cloudflare) — local dev vars example.
 - [docs/](docs) — deployment and configuration guides.

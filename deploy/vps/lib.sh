@@ -18,6 +18,7 @@
 INSTALL_ROOT="/opt/subflow"
 PACKAGE_ROOT="${INSTALL_ROOT}/subflow"   # python package (src/subflow)
 CLI_ROOT="${INSTALL_ROOT}/cli"           # menu.sh + lib.sh + uninstall.sh
+PAGES_ROOT="${INSTALL_ROOT}/pages"       # Cloudflare Pages assets (functions/)
 ENV_DIR="/etc/subflow"
 ENV_FILE="${ENV_DIR}/subflow.env"
 SYSTEMD_UNIT="/etc/systemd/system/subflow.service"
@@ -76,11 +77,12 @@ pause() {
 # ----- Logo banner -----------------------------------------------------------
 banner() {
   printf '%b\n' ""
-  printf '%b\n' "${C_PINK}   ____        _      ______ _               ${C_RESET}"
-  printf '%b\n' "${C_PINK}  / ___| _   _| |__  |  ____| | _____      __ ${C_RESET}"
-  printf '%b\n' "${C_LAV}  \\___ \\| | | | '_ \\ | |__  | |/ _ \\ \\ /\\ / / ${C_RESET}"
-  printf '%b\n' "${C_LAV}   ___) | |_| | |_) ||  __| | | (_) \\ V  V /  ${C_RESET}"
-  printf '%b\n' "${C_CYAN}  |____/ \\__,_|_.__/ |_|    |_|\\___/ \\_/\\_/   ${C_RESET}"
+  printf '%b\n' "${C_PINK}  ███████╗██╗   ██╗██████╗ ███████╗██╗      ██████╗ ██╗    ██╗${C_RESET}"
+  printf '%b\n' "${C_PINK}  ██╔════╝██║   ██║██╔══██╗██╔════╝██║     ██╔═══██╗██║    ██║${C_RESET}"
+  printf '%b\n' "${C_LAV}  ███████╗██║   ██║██████╔╝█████╗  ██║     ██║   ██║██║ █╗ ██║${C_RESET}"
+  printf '%b\n' "${C_LAV}  ╚════██║██║   ██║██╔══██╗██╔══╝  ██║     ██║   ██║██║███╗██║${C_RESET}"
+  printf '%b\n' "${C_CYAN}  ███████║╚██████╔╝██████╔╝██║     ███████╗╚██████╔╝╚███╔███╔╝${C_RESET}"
+  printf '%b\n' "${C_CYAN}  ╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝ ${C_RESET}"
   printf '%b\n' ""
   printf '%b\n' "  ${C_GREY}per-user sing-box subscriptions, fronted by Cloudflare${C_RESET}"
   printf '%b\n' "  ${C_PINK}♡${C_RESET} ${C_BOLD}author${C_RESET} ${C_LAV}${AUTHOR}${C_RESET}   ${C_PINK}♡${C_RESET} ${C_BOLD}repo${C_RESET} ${C_CYAN}${REPO_URL}${C_RESET}"
@@ -279,8 +281,15 @@ copy_runtime() {
   mkdir -p "${CLI_ROOT}"
   cp "${SOURCE_ROOT}/deploy/vps/lib.sh" "${CLI_ROOT}/lib.sh"
   cp "${SOURCE_ROOT}/deploy/vps/menu.sh" "${CLI_ROOT}/menu.sh"
+  cp "${SOURCE_ROOT}/deploy/vps/cf-deploy.sh" "${CLI_ROOT}/cf-deploy.sh"
   cp "${SOURCE_ROOT}/deploy/vps/uninstall.sh" "${CLI_ROOT}/uninstall.sh"
-  chmod +x "${CLI_ROOT}/menu.sh" "${CLI_ROOT}/uninstall.sh"
+  chmod +x "${CLI_ROOT}/menu.sh" "${CLI_ROOT}/cf-deploy.sh" "${CLI_ROOT}/uninstall.sh"
+  # Keep a copy of the Cloudflare Pages assets (functions/ + wrangler.toml) so
+  # the menu can re-deploy later without re-downloading the repo.
+  rm -rf "${PAGES_ROOT}"
+  mkdir -p "${PAGES_ROOT}"
+  cp -R "${SOURCE_ROOT}/functions" "${PAGES_ROOT}/functions"
+  [[ -f "${SOURCE_ROOT}/wrangler.toml" ]] && cp "${SOURCE_ROOT}/wrangler.toml" "${PAGES_ROOT}/wrangler.toml"
 }
 
 install_cli() {
@@ -353,3 +362,47 @@ show_info() {
   printf '%b\n' "    ${C_GREY}环境文件:${C_RESET} ${ENV_FILE}   ${C_GREY}安装目录:${C_RESET} ${INSTALL_ROOT}"
   printf '%b\n' "  ${C_GREY}────────────────────────────────────────────────────${C_RESET}"
 }
+
+# ----- Cloudflare helpers ----------------------------------------------------
+# These are used by cf-deploy.sh (optional automated Cloudflare deployment via
+# Wrangler Direct Upload). They never persist the API token to disk.
+
+CF_API="https://api.cloudflare.com/client/v4"
+
+# json_get <json> <python-expression-on-`d`> — parse JSON with the stdlib python
+# that the VPS already requires. Avoids a jq dependency.
+json_get() {
+  local data="$1" expr="$2"
+  printf '%s' "${data}" | python3 -c "import sys,json
+try:
+    d=json.load(sys.stdin)
+    print(${expr})
+except Exception:
+    print('')"
+}
+
+# cf_api <token> <method> <path> [data] — call the Cloudflare API, echo body.
+cf_api() {
+  local token="$1" method="$2" path="$3" data="${4:-}"
+  if [[ -n "${data}" ]]; then
+    curl -fsS -X "${method}" "${CF_API}${path}" \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" \
+      --data "${data}" 2>/dev/null || true
+  else
+    curl -fsS -X "${method}" "${CF_API}${path}" \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" 2>/dev/null || true
+  fi
+}
+
+# detect public IPv4 (best-effort, used only as a suggested default).
+detect_public_ip() {
+  local ip=""
+  if command -v curl >/dev/null 2>&1; then
+    ip="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    [[ -z "${ip}" ]] && ip="$(curl -fsS --max-time 5 https://ifconfig.me 2>/dev/null || true)"
+  fi
+  printf '%s' "${ip}"
+}
+

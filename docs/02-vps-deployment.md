@@ -18,6 +18,12 @@ wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/
 bash subflow-install.sh
 ```
 
+At the start the installer asks **what to install**:
+
+1. **VPS data API only** (default) — Cloudflare can be deployed later with `sf deploy`.
+2. **VPS data API + Cloudflare auto-deploy** — runs the Cloudflare wizard right
+   after the VPS install (see [03 · Cloudflare deployment](03-cloudflare-deployment.md)).
+
 The installer is **interactive**: it walks you through every setting at install
 time with a guided wizard, so there is no need to hand-edit a file afterwards.
 For each item you can:
@@ -62,6 +68,7 @@ sf edit        # edit configuration
 sf start|stop|restart
 sf logs        # follow logs
 sf update      # pull latest and restart
+sf deploy      # run the Cloudflare auto-deploy wizard
 sf uninstall
 ```
 
