@@ -1,223 +1,171 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# subflow VPS installer
+# subflow VPS installer (interactive)
 # ============================================================
-# This installer intentionally mirrors the upstream Tangfffyx/sing-box UX:
-# operators should be able to `wget` a single shell script and run it without
-# manually creating directories, copying modules or authoring a systemd unit.
+# Single-command install: `wget … && bash install.sh`. The installer walks the
+# operator through every setting at install time (public IP, token, paths, WS
+# domains, …) instead of asking them to hand-edit a file afterwards. Anything
+# skipped keeps a sensible default and can be changed later from the menu (`sf`).
 #
-# The installer is verbose by design. The target operator is often a VPS owner
-# performing remote maintenance over SSH, so every step prints what it is doing
-# and why it matters.
+# After install, the `sf` command opens a friendly management menu.
 # ============================================================
 
 set -Eeuo pipefail
 
-INSTALL_ROOT="/opt/subflow"
-PACKAGE_ROOT="${INSTALL_ROOT}/subflow"
-ENV_DIR="/etc/subflow"
-ENV_FILE="${ENV_DIR}/subflow.env"
-SYSTEMD_UNIT="/etc/systemd/system/subflow.service"
-
-# The default remote source points at the current GitHub repository. Operators
-# can override owner, repo or ref when testing a fork or a feature branch.
-REPO_OWNER="${SUBFLOW_REPO_OWNER:-arnozeng98}"
-REPO_NAME="${SUBFLOW_REPO_NAME:-subflow}"
-REPO_REF="${SUBFLOW_REPO_REF:-main}"
-ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_REF}"
-
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
-SOURCE_ROOT="${REPO_ROOT}"
 
-TMP_DIR=""
-
-say() {
-  printf '[subflow] %s\n' "$1"
-}
-
-require_root() {
-  if [[ "${EUID}" -ne 0 ]]; then
-    say "请使用 root 运行安装脚本。"
-    exit 1
-  fi
-}
-
-require_python3() {
-  if command -v python3 >/dev/null 2>&1; then
-    return 0
-  fi
-
-  say "未找到 python3，请先安装 python3 后重试。"
-  exit 1
-}
-
-require_downloader() {
+# When piped straight from the web (curl | bash) the sibling lib.sh may not be
+# present locally; fall back to fetching the repo source tree first.
+if [[ -f "${SCRIPT_DIR}/lib.sh" ]]; then
+  # shellcheck source=lib.sh
+  source "${SCRIPT_DIR}/lib.sh"
+else
+  printf '[subflow] bootstrapping from GitHub…\n'
+  command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || {
+    printf '[subflow] need curl or wget\n' >&2; exit 1; }
+  BOOT_TMP="$(mktemp -d /tmp/subflow-boot.XXXXXX)"
+  BOOT_OWNER="${SUBFLOW_REPO_OWNER:-arnozeng98}"
+  BOOT_NAME="${SUBFLOW_REPO_NAME:-subflow}"
+  BOOT_REF="${SUBFLOW_REPO_REF:-main}"
+  BOOT_ARCHIVE="https://codeload.github.com/${BOOT_OWNER}/${BOOT_NAME}/tar.gz/refs/heads/${BOOT_REF}"
   if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${BOOT_ARCHIVE}" -o "${BOOT_TMP}/s.tar.gz"
+  else
+    wget -qO "${BOOT_TMP}/s.tar.gz" "${BOOT_ARCHIVE}"
+  fi
+  tar -xzf "${BOOT_TMP}/s.tar.gz" -C "${BOOT_TMP}"
+  # shellcheck source=lib.sh
+  source "${BOOT_TMP}/${BOOT_NAME}-${BOOT_REF}/deploy/vps/lib.sh"
+fi
+
+# ----- Interactive prompts ---------------------------------------------------
+# prompt_value KEY — ask for one config key, honouring defaults and skip rules.
+prompt_value() {
+  local key="$1"
+  local def="${CFG_VALUE[$key]}"
+  local required="${CFG_REQUIRED[$key]:-no}"
+  local secret="${CFG_SECRET[$key]:-no}"
+
+  printf '%b\n' ""
+  printf '%b\n' "  ${C_LAV}${C_BOLD}${key}${C_RESET}"
+  printf '%b\n' "    ${C_GREY}${CFG_DESC[$key]}${C_RESET}"
+
+  local hint=""
+  if [[ "${key}" == "SUBFLOW_API_TOKEN" ]]; then
+    hint="${C_GREY}[回车=自动生成]${C_RESET}"
+  elif [[ -n "${def}" ]]; then
+    hint="${C_GREY}[回车=默认 ${def}]${C_RESET}"
+  elif [[ "${required}" == "yes" ]]; then
+    hint="${C_YELLOW}[必填]${C_RESET}"
+  else
+    hint="${C_GREY}[回车=跳过, 可稍后用 sf 修改]${C_RESET}"
+  fi
+
+  while true; do
+    printf '%b' "    ${C_PINK}输入${C_RESET} ${hint}: "
+    local reply; read -r reply || reply=""
+
+    if [[ -z "${reply}" ]]; then
+      if [[ "${key}" == "SUBFLOW_API_TOKEN" ]]; then
+        CFG_VALUE[$key]="$(generate_token)"
+        ok "已自动生成 Token。"
+        return 0
+      fi
+      if [[ "${required}" == "yes" && -z "${def}" ]]; then
+        warn "该项为必填，请输入（或稍后用 sf 补填后再启动）。"
+        printf '%b' "    ${C_YELLOW}仍要跳过？[y/N]${C_RESET}: "
+        local skip; read -r skip || skip="n"
+        [[ "${skip}" =~ ^[yY] ]] && { note "已跳过，记得稍后 sf 修改。"; return 0; }
+        continue
+      fi
+      note "使用默认/留空。"
+      return 0
+    fi
+    CFG_VALUE[$key]="${reply}"
     return 0
+  done
+}
+
+run_wizard() {
+  printf '%b\n' ""
+  step "开始配置向导（每一步都可回车采用默认/跳过）"
+  local key
+  for key in "${CFG_ORDER[@]}"; do
+    prompt_value "${key}"
+  done
+}
+
+confirm_summary() {
+  printf '%b\n' ""
+  printf '%b\n' "  ${C_CYAN}${C_BOLD}请确认配置${C_RESET}"
+  local key shown
+  for key in "${CFG_ORDER[@]}"; do
+    shown="${CFG_VALUE[$key]}"
+    if [[ "${CFG_SECRET[$key]:-no}" == "yes" && -n "${shown}" ]]; then
+      shown="${shown:0:6}…${shown: -4}"
+    fi
+    printf '%b\n' "    ${C_GREY}${key}${C_RESET} = ${C_LAV}${shown:-(空)}${C_RESET}"
+  done
+  printf '%b\n' ""
+  printf '%b' "  ${C_PINK}确认并安装？[Y/n]${C_RESET}: "
+  local c; read -r c || c="y"
+  [[ -z "${c}" || "${c}" =~ ^[yY] ]]
+}
+
+print_done() {
+  local token="${CFG_VALUE[SUBFLOW_API_TOKEN]}"
+  printf '%b\n' ""
+  ok "安装完成啦～ ♡(◕‿◕)♡"
+  printf '%b\n' ""
+  printf '%b\n' "  ${C_CYAN}服务:${C_RESET} subflow.service    ${C_CYAN}监听:${C_RESET} ${CFG_VALUE[SUBFLOW_LISTEN_HOST]}:${CFG_VALUE[SUBFLOW_LISTEN_PORT]}"
+  printf '%b\n' "  ${C_CYAN}环境文件:${C_RESET} ${ENV_FILE}"
+  printf '%b\n' "  ${C_CYAN}Bearer Token:${C_RESET} ${C_YELLOW}${token}${C_RESET}"
+  printf '%b\n' "  ${C_GREY}↑ 在 Cloudflare 配置同样的 VPS_API_BEARER_TOKEN${C_RESET}"
+  if [[ -z "${CFG_VALUE[SUBFLOW_PUBLIC_IP]}" ]]; then
+    printf '%b\n' ""
+    warn "SUBFLOW_PUBLIC_IP still 为空，节点暂不可用。运行 sf → 修改配置 补填后会自动重启。"
   fi
-  if command -v wget >/dev/null 2>&1; then
-    return 0
-  fi
-
-  say "未找到 curl 或 wget，无法从 GitHub 拉取安装文件。"
-  exit 1
-}
-
-generate_token() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 16
-    return 0
-  fi
-
-  date +%s%N | sha256sum | awk '{print $1}' | cut -c1-32
-}
-
-cleanup() {
-  if [[ -n "${TMP_DIR}" && -d "${TMP_DIR}" ]]; then
-    rm -rf "${TMP_DIR}"
-  fi
-}
-
-download_archive() {
-  local archive_path="$1"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${ARCHIVE_URL}" -o "${archive_path}"
-    return 0
-  fi
-
-  wget -qO "${archive_path}" "${ARCHIVE_URL}"
-}
-
-prepare_remote_source_tree() {
-  TMP_DIR="$(mktemp -d /tmp/subflow-install.XXXXXX)"
-  local archive_path="${TMP_DIR}/subflow.tar.gz"
-  say "从 GitHub 拉取 subflow 仓库归档..."
-  download_archive "${archive_path}"
-  tar -xzf "${archive_path}" -C "${TMP_DIR}"
-  SOURCE_ROOT="${TMP_DIR}/${REPO_NAME}-${REPO_REF}"
-}
-
-prepare_source_tree() {
-  if [[ -d "${SOURCE_ROOT}/src/subflow" ]]; then
-    say "检测到本地源码，优先使用本地文件安装。"
-    return 0
-  fi
-
-  require_downloader
-  prepare_remote_source_tree
-}
-
-write_env_file() {
-  mkdir -p "${ENV_DIR}"
-
-  local token=""
-  if [[ -f "${ENV_FILE}" ]]; then
-    token="$(awk -F= '/^SUBFLOW_API_TOKEN=/{print $2}' "${ENV_FILE}" | tail -n1)"
-  fi
-  if [[ -z "${token}" ]]; then
-    token="$(generate_token)"
-  fi
-
-  cat > "${ENV_FILE}" <<EOF_ENV
-# ============================================================
-# subflow environment configuration (VPS data API)
-# ============================================================
-# This file is loaded by the systemd unit created by install.sh.
-#
-# The VPS service only exposes data over a private, token-protected API. All
-# client configuration assembly happens on Cloudflare. The defaults below point
-# at the data files created by Tangfffyx/sing-box so the service can attach to an
-# already-managed VPS.
-# ============================================================
-# Sensitive value. Do not commit a real token into Git. This value should only
-# exist on the VPS itself in /etc/subflow/subflow.env, and must match the
-# VPS_API_BEARER_TOKEN secret configured on Cloudflare.
-SUBFLOW_API_TOKEN=${token}
-SUBFLOW_LISTEN_HOST=127.0.0.1
-SUBFLOW_LISTEN_PORT=28080
-SUBFLOW_CONFIG_PATH=/etc/sing-box/config.json
-SUBFLOW_USER_DB_PATH=/etc/sing-box-manager/user-manager.json
-SUBFLOW_META_PATH=/etc/sing-box-manager/meta.json
-
-# REQUIRED. Public IP (or host) clients connect to. This becomes the server
-# address in every generated node. Leave empty only if you intend to set it
-# before starting the service; nodes are unusable without it.
-SUBFLOW_PUBLIC_IP=
-
-# Optional WebSocket host overrides for VLESS-WS and VMess-WS nodes. Set these
-# when those inbounds sit behind a CDN domain rather than the bare IP.
-SUBFLOW_WS_DOMAIN=
-SUBFLOW_VMESS_WS_DOMAIN=
-
-# Set to true to also serve nodes for disabled users (default false).
-SUBFLOW_INCLUDE_DISABLED_USERS=false
-EOF_ENV
-
-  chmod 600 "${ENV_FILE}"
-}
-
-copy_source_tree() {
-  mkdir -p "${INSTALL_ROOT}"
-  rm -rf "${PACKAGE_ROOT}"
-  cp -R "${SOURCE_ROOT}/src/subflow" "${PACKAGE_ROOT}"
-}
-
-write_systemd_unit() {
-  cat > "${SYSTEMD_UNIT}" <<EOF_UNIT
-[Unit]
-Description=subflow private subscription API
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=${ENV_FILE}
-WorkingDirectory=${INSTALL_ROOT}
-ExecStart=/usr/bin/env python3 -m subflow
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF_UNIT
-}
-
-reload_and_restart() {
-  systemctl daemon-reload
-  systemctl enable subflow.service >/dev/null 2>&1 || true
-  systemctl restart subflow.service
-}
-
-print_summary() {
-  local token
-  token="$(awk -F= '/^SUBFLOW_API_TOKEN=/{print $2}' "${ENV_FILE}" | tail -n1)"
-
-  say "安装完成。"
-  say "systemd 服务: subflow.service"
-  say "环境文件: ${ENV_FILE}"
-  say "安装目录: ${INSTALL_ROOT}"
-  say "Bearer Token: ${token}"
-  say "源码目录: ${PACKAGE_ROOT}"
-  say "请编辑 ${ENV_FILE} 中的 SUBFLOW_PUBLIC_IP (必填) 与可选 SUBFLOW_WS_DOMAIN 后重启服务。"
-  say "并在 Cloudflare 配置 VPS_API_BEARER_TOKEN 为上面的 Bearer Token。"
+  printf '%b\n' ""
+  step "随时输入 ${C_BOLD}sf${C_RESET}${C_PINK} 呼出管理菜单 (查看状态/修改配置/开关/卸载) ♡${C_RESET}"
 }
 
 main() {
-  trap cleanup EXIT
+  trap cleanup_tmp EXIT
   require_root
   require_python3
+  init_config_meta
+
+  clear 2>/dev/null || true
+  banner
+
+  # If already installed, preload existing values so the wizard pre-fills them.
+  if is_installed; then
+    info "检测到已安装的 subflow，向导将以现有配置为默认值。"
+    load_env
+  fi
+
+  run_wizard
+
+  while ! confirm_summary; do
+    warn "重新配置一次～"
+    run_wizard
+  done
+
+  step "准备源码…"
   prepare_source_tree
-  say "复制模块化 subflow 服务文件..."
-  copy_source_tree
-  say "写入运行环境文件..."
-  write_env_file
-  say "写入 systemd 单元..."
+  step "复制运行文件与管理菜单…"
+  copy_runtime
+  step "写入运行环境文件…"
+  save_env
+  step "安装 sf 快捷命令…"
+  install_cli
+  step "写入 systemd 单元…"
   write_systemd_unit
-  say "重载并启动 subflow 服务..."
+  step "重载并启动服务…"
   reload_and_restart
-  print_summary
+
+  print_done
 }
 
 main "$@"

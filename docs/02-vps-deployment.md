@@ -18,32 +18,54 @@ wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/
 bash subflow-install.sh
 ```
 
-The installer:
+The installer is **interactive**: it walks you through every setting at install
+time with a guided wizard, so there is no need to hand-edit a file afterwards.
+For each item you can:
+
+- type a value, or
+- press Enter to accept the shown default (and the Bearer token is generated
+  automatically), or
+- skip optional items — and change them later from the menu (`sf`).
+
+It then:
 
 1. Downloads the repository archive from GitHub if local source is not present.
-2. Copies the service into `/opt/subflow`.
-3. Writes `/etc/subflow/subflow.env` (mode `600`) with a generated Bearer token.
-4. Creates and starts `subflow.service` (systemd).
-5. Prints the Bearer token — **save it**; Cloudflare needs the same value.
+2. Copies the service into `/opt/subflow` and the menu/CLI into `/opt/subflow/cli`.
+3. Writes `/etc/subflow/subflow.env` (mode `600`) from your answers.
+4. Installs the `sf` command at `/usr/local/bin/sf`.
+5. Creates and starts `subflow.service` (systemd).
+6. Prints the Bearer token — **save it**; Cloudflare needs the same value.
 
-## Required configuration
+The one value you should not skip is `SUBFLOW_PUBLIC_IP` (the public IP/host that
+becomes every node's server address). If you do skip it, the wizard warns you and
+you can fill it in later via `sf` → 修改配置.
 
-Edit `/etc/subflow/subflow.env` and set the public address clients connect to:
+## The `sf` menu
 
-```ini
-SUBFLOW_PUBLIC_IP=203.0.113.10        # REQUIRED: becomes every node's server
-SUBFLOW_WS_DOMAIN=ws.example.com      # only if VLESS-WS sits behind a CDN
-SUBFLOW_VMESS_WS_DOMAIN=vm.example.com
-```
-
-Then restart:
+After installation, run:
 
 ```bash
-systemctl restart subflow.service
+sf
 ```
 
-> Without `SUBFLOW_PUBLIC_IP`, generated nodes have no usable server address.
-> See [04 · Secrets & configuration](04-secrets-and-config.md) for all variables.
+This opens a friendly management menu (logo, author, and repo at the top) where
+you can view status and full details, edit any setting (including ones skipped
+at install — saving restarts the service automatically), start/stop/restart,
+toggle autostart, tail logs, update to the latest version, or uninstall.
+
+Non-interactive subcommands are also available:
+
+```bash
+sf status      # systemd status
+sf info        # full config incl. token
+sf edit        # edit configuration
+sf start|stop|restart
+sf logs        # follow logs
+sf update      # pull latest and restart
+sf uninstall
+```
+
+> See [04 · Secrets & configuration](04-secrets-and-config.md) for every variable.
 
 ## Verify
 
@@ -71,7 +93,11 @@ is the only thing protecting the data API.
 
 ## Service management
 
+Use the menu (`sf` → 服务开关) or the subcommands / systemd directly:
+
 ```bash
+sf restart                       # via the menu CLI
+# or equivalently:
 systemctl status subflow.service
 journalctl -u subflow.service -f
 systemctl restart subflow.service
@@ -79,10 +105,11 @@ systemctl restart subflow.service
 
 ## Uninstall
 
+From the menu: `sf` → 卸载. Or directly:
+
 ```bash
-wget -O subflow-uninstall.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/deploy/vps/uninstall.sh
-bash subflow-uninstall.sh
+sf uninstall
 ```
 
-This removes only subflow. Your upstream sing-box runtime and user data are left
-untouched.
+This removes subflow (service, files, and the `sf` command). Your upstream
+sing-box runtime and user data are left untouched.

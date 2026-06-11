@@ -40,7 +40,9 @@ Full guides live in [docs/](docs/):
 ```bash
 # 1) On the VPS (already running Tangfffyx/sing-box):
 wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/deploy/vps/install.sh && bash subflow-install.sh
-# then edit /etc/subflow/subflow.env (set SUBFLOW_PUBLIC_IP) and restart the service.
+# The installer is interactive: it prompts for every setting (public IP, token,
+# paths, WS domains). Skipped items can be changed later from the menu.
+# Afterwards, run `sf` anytime to open the management menu.
 
 # 2) On Cloudflare: create a Pages project from this repo and set the secrets
 #    VPS_API_BASE_URL and VPS_API_BEARER_TOKEN (see docs/03 and docs/04).
@@ -53,7 +55,9 @@ wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/
   link builders, format negotiation, and the per-platform config generators under
   [functions/_lib/templates/](functions/_lib/templates).
 - [src/subflow/](src/subflow) — VPS data API (pure data, no rendering).
-- [deploy/vps/](deploy/vps) — installer, uninstaller, env example.
+- [deploy/vps/](deploy/vps) — interactive installer, `sf` management menu
+  ([menu.sh](deploy/vps/menu.sh)), shared library ([lib.sh](deploy/vps/lib.sh)),
+  uninstaller, and env example.
 - [deploy/cloudflare/](deploy/cloudflare) — local dev vars example.
 - [docs/](docs) — deployment and configuration guides.
 - [scripts/smoke-test.mjs](scripts/smoke-test.mjs) — local generator smoke test (requires Node 18+).
