@@ -22,11 +22,10 @@ import { generateUniversal } from "./universal.js";
  * @param {string} format Canonical format identifier.
  * @param {Array<object>} nodes Normalized nodes.
  * @param {object} config Resolved runtime config.
- * @param {object} raw Raw VPS payload (for usage metadata).
  * @param {ExecutionContext} [ctx] Pages execution context (for cache writes).
  * @returns {Promise<{ contentType: string, body: string }>}
  */
-export async function generate(format, nodes, config, raw, ctx) {
+export async function generate(format, nodes, config, ctx) {
 	switch (format) {
 		case FORMAT.CLASH: {
 			const template = await fetchTemplate(

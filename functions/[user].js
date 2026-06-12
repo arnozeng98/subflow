@@ -64,7 +64,7 @@ export async function onRequestGet(context) {
 	);
 
 	try {
-		const { contentType, body } = await generate(format, nodes, config, raw, { waitUntil });
+		const { contentType, body } = await generate(format, nodes, config, { waitUntil });
 		const userinfo = buildSubscriptionUserinfo(raw?.usage);
 		return subscriptionResponse(body, contentType, config.responseCacheControl, userinfo);
 	} catch {
