@@ -20,7 +20,9 @@ export function subscriptionResponse(body, contentType, cacheControl, userinfo) 
 	};
 	if (userinfo) {
 		// Standard quota/expiry meter consumed by Shadowrocket, Clash Verge, etc.
-		headers["subscription-userinfo"] = userinfo;
+		headers["Subscription-Userinfo"] = userinfo;
+		// Many clients also honor this common update hint for subscription profiles.
+		headers["Profile-Update-Interval"] = "24";
 	}
 	return new Response(body, {
 		status: 200,

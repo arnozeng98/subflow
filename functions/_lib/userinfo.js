@@ -10,6 +10,19 @@
 
 const GiB = 1024 * 1024 * 1024;
 
+function toNumber(...candidates) {
+	for (const value of candidates) {
+		if (value == null || value === "") {
+			continue;
+		}
+		const num = Number(value);
+		if (Number.isFinite(num)) {
+			return num;
+		}
+	}
+	return 0;
+}
+
 /**
  * Normalize the upstream `expire_at` field to whole unix seconds.
  *
@@ -47,10 +60,13 @@ export function buildSubscriptionUserinfo(usage) {
 	if (!usage) {
 		return "";
 	}
-	const upload = usage.used_up_bytes || 0;
-	const download = usage.used_down_bytes || 0;
-	const total = (usage.quota_gb || 0) * GiB + (usage.manual_added_bytes || 0);
-	const expire = parseExpireSeconds(usage.expire_at);
+	const upload = Math.max(0, Math.floor(toNumber(usage.used_up_bytes, usage.upload)));
+	const download = Math.max(0, Math.floor(toNumber(usage.used_down_bytes, usage.download)));
+	const quotaBytes = Math.floor(toNumber(usage.quota_bytes, usage.total_bytes, usage.total));
+	const quotaFromGiB = Math.floor(toNumber(usage.quota_gb) * GiB);
+	const manualAdded = Math.floor(toNumber(usage.manual_added_bytes));
+	const total = Math.max(quotaBytes, quotaFromGiB + manualAdded);
+	const expire = parseExpireSeconds(usage.expire_at ?? usage.expires_at ?? usage.expire);
 
 	// Without a quota or an expiry there is nothing meaningful to display.
 	if (total <= 0 && expire <= 0) {
