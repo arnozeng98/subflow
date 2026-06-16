@@ -10,6 +10,13 @@
 
 const GiB = 1024 * 1024 * 1024;
 
+// Upstream stores `quota_gb` as a single-direction figure, and its v2ray_api
+// counter likewise reports roughly half of the real bidirectional traffic.
+// Scaling both the quota and the usage counters by the same factor keeps the
+// client meter consistent: it shows the true quota (quota_gb=50 -> 100GB) and
+// the bar fills exactly when the upstream caps the user.
+const QUOTA_DISPLAY_MULTIPLIER = 2;
+
 function toNumber(...candidates) {
 	for (const value of candidates) {
 		if (value == null || value === "") {
@@ -60,13 +67,13 @@ export function buildSubscriptionUserinfo(usage) {
 	if (!usage) {
 		return "";
 	}
-	const upload = Math.max(0, Math.floor(toNumber(usage.used_up_bytes, usage.upload)));
-	const download = Math.max(0, Math.floor(toNumber(usage.used_down_bytes, usage.download)));
-	const quotaBytes = Math.floor(toNumber(usage.quota_bytes, usage.total_bytes, usage.total));
-	const quotaFromGiB = Math.floor(toNumber(usage.quota_gb) * GiB);
-	const manualAdded = Math.floor(toNumber(usage.manual_added_bytes));
-	const total = Math.max(quotaBytes, quotaFromGiB + manualAdded);
-	const expire = parseExpireSeconds(usage.expire_at ?? usage.expires_at ?? usage.expire);
+	// Used = upload + download. Clients sum the two header fields themselves.
+	// Both the usage counters and the quota are scaled by the same multiplier so
+	// the meter stays accurate: the bar fills exactly when the user is capped.
+	const upload = Math.max(0, Math.floor(toNumber(usage.used_up_bytes) * QUOTA_DISPLAY_MULTIPLIER));
+	const download = Math.max(0, Math.floor(toNumber(usage.used_down_bytes) * QUOTA_DISPLAY_MULTIPLIER));
+	const total = Math.max(0, Math.floor(toNumber(usage.quota_gb) * QUOTA_DISPLAY_MULTIPLIER * GiB));
+	const expire = parseExpireSeconds(usage.expire_at);
 
 	// Without a quota or an expiry there is nothing meaningful to display.
 	if (total <= 0 && expire <= 0) {
