@@ -159,16 +159,118 @@ require_root() {
   fi
 }
 
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    printf 'apt-get'
+    return 0
+  fi
+  if command -v dnf >/dev/null 2>&1; then
+    printf 'dnf'
+    return 0
+  fi
+  if command -v yum >/dev/null 2>&1; then
+    printf 'yum'
+    return 0
+  fi
+  if command -v pacman >/dev/null 2>&1; then
+    printf 'pacman'
+    return 0
+  fi
+  if command -v apk >/dev/null 2>&1; then
+    printf 'apk'
+    return 0
+  fi
+  if command -v zypper >/dev/null 2>&1; then
+    printf 'zypper'
+    return 0
+  fi
+  return 1
+}
+
+install_packages() {
+  local pkg_mgr="$1"
+  shift
+  local pkgs=("$@")
+  [[ "${#pkgs[@]}" -gt 0 ]] || return 0
+
+  case "${pkg_mgr}" in
+    apt-get)
+      DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null
+      DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"
+      ;;
+    dnf)
+      dnf install -y "${pkgs[@]}"
+      ;;
+    yum)
+      yum install -y "${pkgs[@]}"
+      ;;
+    pacman)
+      pacman -Sy --noconfirm "${pkgs[@]}"
+      ;;
+    apk)
+      apk add --no-cache "${pkgs[@]}"
+      ;;
+    zypper)
+      zypper --non-interactive install "${pkgs[@]}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ensure_command_with_install() {
+  local cmd="$1"
+  shift
+  local pkgs=("$@")
+
+  command -v "${cmd}" >/dev/null 2>&1 && return 0
+
+  local pkg_mgr
+  if ! pkg_mgr="$(detect_package_manager)"; then
+    return 1
+  fi
+
+  warn "检测到缺少 ${cmd}，尝试自动安装…"
+  if ! install_packages "${pkg_mgr}" "${pkgs[@]}"; then
+    return 1
+  fi
+
+  command -v "${cmd}" >/dev/null 2>&1
+}
+
 require_python3() {
-  command -v python3 >/dev/null 2>&1 && return 0
-  err "未找到 python3，请先安装 python3 后重试。"
+  if ensure_command_with_install python3 python3; then
+    return 0
+  fi
+  err "未找到 python3，且自动安装失败。请手动安装后重试。"
   exit 1
 }
 
 require_downloader() {
   command -v curl >/dev/null 2>&1 && return 0
   command -v wget >/dev/null 2>&1 && return 0
-  err "未找到 curl 或 wget，无法从 GitHub 拉取安装文件。"
+
+  local pkg_mgr
+  if ! pkg_mgr="$(detect_package_manager)"; then
+    err "未找到 curl 或 wget，且无法识别包管理器自动安装。"
+    exit 1
+  fi
+
+  warn "未找到 curl/wget，尝试自动安装…"
+  install_packages "${pkg_mgr}" curl wget || true
+
+  command -v curl >/dev/null 2>&1 && return 0
+  command -v wget >/dev/null 2>&1 && return 0
+  err "未找到 curl 或 wget，且自动安装失败。"
+  exit 1
+}
+
+require_tar() {
+  if ensure_command_with_install tar tar; then
+    return 0
+  fi
+  err "未找到 tar，且自动安装失败。"
   exit 1
 }
 
@@ -264,6 +366,7 @@ prepare_source_tree() {
     return 0
   fi
   require_downloader
+  require_tar
   TMP_DIR="$(mktemp -d /tmp/subflow-src.XXXXXX)"
   local archive_path="${TMP_DIR}/subflow.tar.gz"
   info "从 GitHub 拉取 subflow 仓库归档…"
