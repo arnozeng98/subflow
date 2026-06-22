@@ -1,0 +1,29 @@
+# ============================================================
+# subflow 跨运行时共享默认值（唯一来源 / single source of truth）
+# ============================================================
+# 这里集中保管被「多个运行时」共享的默认值，避免同一个路径/端口在
+# bash 管理器、Python 数据 API 里各写一份、日后改动时遗漏。
+#
+# 修改本文件后，运行下面命令重新生成各语言的常量文件：
+#     python3 scripts/gen_config.py
+#
+# 生成目标：
+#   - bash 管理器     -> vps/singbox/lib/00_generated.sh
+#   - Python 数据 API -> vps/subflow/subflow/_defaults.py
+#
+# 注意：运行期不会解析本 YAML（保持 sb.sh 单文件分发、Python 纯标准库），
+# 所有取值都在「构建/生成阶段」固化进上面的常量文件里。
+# ============================================================
+
+# sing-box 与多用户管理器在磁盘上的数据文件路径。
+# 管理器（bash）负责写入，数据 API（Python）负责读取，二者必须一致。
+paths:
+  singbox_config: /etc/sing-box/config.json          # sing-box 主配置
+  user_db: /etc/sing-box-manager/user-manager.json   # 多用户库（配额/用量计数）
+  meta: /etc/sing-box-manager/meta.json              # 元数据（reality 公钥等）
+  telegram: /etc/sing-box-manager/telegram.json      # Telegram 集成状态
+
+# 数据 API（Python）默认监听地址/端口（仅在未设置对应环境变量时生效）。
+data_api:
+  listen_host: 127.0.0.1
+  listen_port: 28080
