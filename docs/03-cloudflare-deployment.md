@@ -14,7 +14,7 @@ configurations are generated.
 
 If you have already installed the VPS data API, you can deploy the Cloudflare
 Pages gateway from the same machine with **one command** — no fork and no GitHub
-token required. It uses Wrangler **Direct Upload**, sending the `functions/`
+token required. It uses Wrangler **Direct Upload**, sending the `cloudflare/functions/`
 directory that the installer already downloaded.
 
 ```bash
@@ -68,11 +68,11 @@ NodeSource if missing. `cloudflared` is installed automatically.
    *Pages* → *Connect to Git* → select this repository.
 2. **Build settings.** There is no build step. Leave *Framework preset* as
    *None*, *Build command* empty, and *Build output directory* as `/` (the
-   `functions/` directory is detected automatically).
+   `cloudflare/functions/` directory is detected automatically).
 3. **Set variables and secrets** (see [04 · Secrets & configuration](04-secrets-and-config.md)):
    - Secret: `VPS_API_BASE_URL`
    - Secret: `VPS_API_BEARER_TOKEN`
-   - (Optional vars come from [wrangler.toml](../wrangler.toml) defaults; override
+   - (Optional vars come from [wrangler.toml](../cloudflare/wrangler.toml) defaults; override
      in the dashboard if needed.)
 4. **Deploy.** Trigger the first deployment.
 5. **Custom domain.** *Custom domains* → add e.g. `sub.example.com`.
@@ -94,7 +94,7 @@ wrangler pages deploy
 ## Local development
 
 ```bash
-cp deploy/cloudflare/.dev.vars.example .dev.vars
+cp cloudflare/deploy/.dev.vars.example .dev.vars
 # edit .dev.vars with a reachable VPS base URL + token
 wrangler pages dev
 ```

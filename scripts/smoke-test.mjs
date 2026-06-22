@@ -1,6 +1,6 @@
-import { buildNodes } from "../functions/_lib/protocol.js";
-import { resolveConfig } from "../functions/_lib/config.js";
-import { generate } from "../functions/_lib/templates/index.js";
+import { buildNodes } from "../cloudflare/functions/_lib/protocol.js";
+import { resolveConfig } from "../cloudflare/functions/_lib/config.js";
+import { generate } from "../cloudflare/functions/_lib/templates/index.js";
 
 const raw = {
 	username: "alice",

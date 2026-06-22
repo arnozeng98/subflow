@@ -1,12 +1,12 @@
 # 02 · VPS deployment
 
-The VPS service is the private data API. Install it on the same machine that runs
-Tangfffyx/sing-box.
+The VPS service is the private data API. The installer also sets up the bundled
+sing-box manager (vendored under `vps/singbox`) on the same machine.
 
 ## Prerequisites
 
-- A VPS already running [Tangfffyx/sing-box](https://github.com/Tangfffyx/sing-box)
-  with at least one user configured.
+- A VPS where the installer will set up sing-box and at least one user
+  (configured interactively via the bundled manager, the `s` command).
 - `python3` (3.9+) available.
 - `root` access.
 - `curl` or `wget` (the installer uses them to fetch the repo archive).
@@ -14,7 +14,7 @@ Tangfffyx/sing-box.
 ## Install
 
 ```bash
-wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/deploy/vps/install.sh
+wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/vps/deploy/install.sh
 bash subflow-install.sh
 ```
 

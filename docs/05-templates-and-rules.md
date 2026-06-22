@@ -21,8 +21,8 @@ rules without any action from subflow.
 
 ## How a config is built
 
-1. The gateway normalizes the user's nodes ([protocol.js](../functions/_lib/protocol.js)).
-2. The matching generator under [functions/_lib/templates/](../functions/_lib/templates)
+1. The gateway normalizes the user's nodes ([protocol.js](../cloudflare/functions/_lib/protocol.js)).
+2. The matching generator under [cloudflare/functions/_lib/templates/](../cloudflare/functions/_lib/templates)
    builds the proxies/outbounds, the proxy/policy groups, and the rule references.
 3. The result is returned with the correct content type.
 
@@ -58,5 +58,5 @@ All sources are environment variables (see
 ## Defaults
 
 The default source bases are defined once in
-[functions/_lib/constants.js](../functions/_lib/constants.js) (`RULE_SOURCES`) and
+[cloudflare/functions/_lib/constants.js](../cloudflare/functions/_lib/constants.js) (`RULE_SOURCES`) and
 are all overridable via env, keeping configuration external.

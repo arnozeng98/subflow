@@ -5,19 +5,19 @@ boundary.
 
 ## Components
 
-### VPS data API (`src/subflow`)
+### VPS data API (`vps/subflow`)
 
-A small Python (stdlib-only) HTTP service that runs next to an existing
-Tangfffyx/sing-box installation. It:
+A small Python (stdlib-only) HTTP service that runs next to the bundled
+sing-box manager (vendored under `vps/singbox`). It:
 
-- reads the upstream files (`config.json`, `user-manager.json`, `meta.json`),
+- reads the sing-box files (`config.json`, `user-manager.json`, `meta.json`),
 - authenticates every request with a Bearer token,
 - returns, for one username, a **raw JSON slice** of just that user's inbounds
   plus the Reality metadata and the public IP / WebSocket domains.
 
 It performs **no** protocol rendering and never returns other users' secrets.
 
-### Cloudflare Pages gateway (`functions/`)
+### Cloudflare Pages gateway (`cloudflare/functions/`)
 
 A Pages Function that:
 
@@ -27,7 +27,7 @@ A Pages Function that:
 - negotiates the output format (query string → User-Agent → default),
 - **generates the full client configuration** and returns it.
 
-All assembly logic lives here, in modular files under `functions/_lib/`.
+All assembly logic lives here, in modular files under `cloudflare/functions/_lib/`.
 
 ## Data flow
 
@@ -52,14 +52,16 @@ flowchart LR
 
 | Concern | File |
 | --- | --- |
-| Env resolution (single source) | [functions/_lib/config.js](../functions/_lib/config.js) |
-| Constants & official source URLs | [functions/_lib/constants.js](../functions/_lib/constants.js) |
-| VPS transport | [functions/_lib/raw-client.js](../functions/_lib/raw-client.js) |
-| Protocol detection & node model | [functions/_lib/protocol.js](../functions/_lib/protocol.js) |
-| Share-link builders | [functions/_lib/links.js](../functions/_lib/links.js) |
-| Format negotiation | [functions/_lib/format.js](../functions/_lib/format.js) |
-| Template cache fetcher | [functions/_lib/templates/fetcher.js](../functions/_lib/templates/fetcher.js) |
-| Per-platform generators | [functions/_lib/templates/](../functions/_lib/templates) |
-| VPS config | [src/subflow/config.py](../src/subflow/config.py) |
-| VPS raw projection | [src/subflow/services/raw_projection.py](../src/subflow/services/raw_projection.py) |
-| VPS HTTP handlers | [src/subflow/http/handlers.py](../src/subflow/http/handlers.py) |
+| Env resolution (single source) | [cloudflare/functions/_lib/config.js](../cloudflare/functions/_lib/config.js) |
+| Constants & official source URLs | [cloudflare/functions/_lib/constants.js](../cloudflare/functions/_lib/constants.js) |
+| VPS transport | [cloudflare/functions/_lib/raw-client.js](../cloudflare/functions/_lib/raw-client.js) |
+| Protocol detection & node model | [cloudflare/functions/_lib/protocol.js](../cloudflare/functions/_lib/protocol.js) |
+| Share-link builders | [cloudflare/functions/_lib/links.js](../cloudflare/functions/_lib/links.js) |
+| Format negotiation | [cloudflare/functions/_lib/format.js](../cloudflare/functions/_lib/format.js) |
+| Template cache fetcher | [cloudflare/functions/_lib/templates/fetcher.js](../cloudflare/functions/_lib/templates/fetcher.js) |
+| Per-platform generators | [cloudflare/functions/_lib/templates/](../cloudflare/functions/_lib/templates) |
+| VPS config | [vps/subflow/config.py](../vps/subflow/config.py) |
+| VPS raw projection | [vps/subflow/services/raw_projection.py](../vps/subflow/services/raw_projection.py) |
+| VPS HTTP handlers | [vps/subflow/http/handlers.py](../vps/subflow/http/handlers.py) |
+| Shared defaults (single YAML source) | [configs/defaults.yaml](../configs/defaults.yaml) |
+| Bundled sing-box manager | [vps/singbox/](../vps/singbox) |

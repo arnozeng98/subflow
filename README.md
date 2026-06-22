@@ -1,12 +1,13 @@
 # subflow
 
-subflow turns a VPS already managed by [Tangfffyx/sing-box](https://github.com/Tangfffyx/sing-box)
-into a per-user subscription service, fronted by Cloudflare Pages.
+subflow turns a VPS into a per-user subscription service, fronted by Cloudflare
+Pages. It bundles its own sing-box multi-user manager (vendored under
+[vps/singbox](vps/singbox)), so no separate installation is required.
 
 Two clearly separated parts:
 
-1. **VPS data API** (`src/subflow`) — a tiny, token-protected service that exposes
-   the upstream node data for a single user as raw JSON. It does **no** rendering.
+1. **VPS data API** (`vps/subflow`) — a tiny, token-protected service that exposes
+   one user's sing-box node data as raw JSON. It does **no** rendering.
 2. **Cloudflare Pages gateway** (`functions/`) — validates the username, fetches
    that raw data, and **generates the complete client configuration** (Clash,
    sing-box, Surge, Quantumult X, Shadowrocket, or a universal URI list) using
@@ -15,7 +16,7 @@ Two clearly separated parts:
 ```
 client ──> Cloudflare Pages (/<user>?format=…) ──> VPS data API (/internal/raw/<user>)
                   │                                         │
-                  │  builds full config from                │  reads upstream
+                  │  builds full config from                │  reads sing-box
                   │  official rule sources                  ▼
                   ▼                                  /etc/sing-box/config.json
             subscription                            /etc/sing-box-manager/*.json
@@ -38,8 +39,8 @@ Full guides live in [docs/](docs/):
 ## Quick start
 
 ```bash
-# 1) On the VPS (already running Tangfffyx/sing-box):
-wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/deploy/vps/install.sh && bash subflow-install.sh
+# 1) On the VPS (installs sing-box + the data API):
+wget -O subflow-install.sh https://raw.githubusercontent.com/arnozeng98/subflow/main/vps/deploy/install.sh && bash subflow-install.sh
 # The installer is interactive: it prompts for every setting (public IP, token,
 # paths, WS domains). Skipped items can be changed later from the menu.
 # Choose "VPS API only" or "VPS API + Cloudflare 自动部署" at the start.
@@ -58,24 +59,26 @@ sf deploy
 
 ## Repository layout
 
-- [functions/[user].js](functions/[user].js) — Pages entry point (orchestration only).
-- [functions/_lib/](functions/_lib) — gateway modules: config, protocol detection,
+- [cloudflare/functions/[user].js](cloudflare/functions/[user].js) — Pages entry point (orchestration only).
+- [cloudflare/functions/_lib/](cloudflare/functions/_lib) — gateway modules: config, protocol detection,
   link builders, format negotiation, and the per-platform config generators under
-  [functions/_lib/templates/](functions/_lib/templates).
-- [src/subflow/](src/subflow) — VPS data API (pure data, no rendering).
-- [deploy/vps/](deploy/vps) — interactive installer, `sf` management menu
-  ([menu.sh](deploy/vps/menu.sh)), shared library ([lib.sh](deploy/vps/lib.sh)),
-  Cloudflare auto-deploy ([cf-deploy.sh](deploy/vps/cf-deploy.sh)),
+  [cloudflare/functions/_lib/templates/](cloudflare/functions/_lib/templates).
+- [vps/subflow/](vps/subflow) — VPS data API (pure data, no rendering).
+- [vps/singbox/](vps/singbox) — bundled sing-box multi-user manager (the `s` command).
+- [vps/deploy/](vps/deploy) — interactive installer, `sf` management menu
+  ([menu.sh](vps/deploy/menu.sh)), shared library ([lib.sh](vps/deploy/lib.sh)),
+  Cloudflare auto-deploy ([cf-deploy.sh](vps/deploy/cf-deploy.sh)),
   uninstaller, and env example.
-- [deploy/cloudflare/](deploy/cloudflare) — local dev vars example.
+- [cloudflare/deploy/](cloudflare/deploy) — local dev vars example.
+- [configs/](configs) — shared default values (single YAML source).
 - [docs/](docs) — deployment and configuration guides.
 - [scripts/smoke-test.mjs](scripts/smoke-test.mjs) — local generator smoke test (requires Node 18+).
 
 ## Design notes
 
 - **No hard-coded config.** Every operator value is an environment variable; the
-  gateway reads them in one place ([functions/_lib/config.js](functions/_lib/config.js))
-  and the VPS in [src/subflow/config.py](src/subflow/config.py).
+  gateway reads them in one place ([cloudflare/functions/_lib/config.js](cloudflare/functions/_lib/config.js))
+  and the VPS in [vps/subflow/config.py](vps/subflow/config.py).
 - **Always-latest rules.** Generated configs reference official rule sources
   (Loyalsoldier, SagerNet, blackmatrix7) via the client's native rule-provider /
   rule_set / RULE-SET mechanisms, so rules update without re-hosting.

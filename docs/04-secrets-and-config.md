@@ -5,8 +5,8 @@ is hard-coded. This page lists them all and how to set the sensitive ones.
 
 ## Cloudflare Pages (gateway)
 
-Read in one place: [functions/_lib/config.js](../functions/_lib/config.js).
-Non-sensitive defaults live in [wrangler.toml](../wrangler.toml).
+Read in one place: [cloudflare/functions/_lib/config.js](../cloudflare/functions/_lib/config.js).
+Non-sensitive defaults live in [wrangler.toml](../cloudflare/wrangler.toml).
 
 | Variable | Required | Type | Default | Purpose |
 | --- | --- | --- | --- | --- |
@@ -28,7 +28,7 @@ Non-sensitive defaults live in [wrangler.toml](../wrangler.toml).
 | `SUBFLOW_SINGBOX_GEOIP_BASE` | No | Var | SagerNet sing-geoip | sing-box geoip rule-set base. |
 | `SUBFLOW_BLACKMATRIX7_BASE` | No | Var | blackmatrix7 master | Surge/QX RULE-SET base. |
 
-Template for local dev: [deploy/cloudflare/.dev.vars.example](../deploy/cloudflare/.dev.vars.example).
+Template for local dev: [cloudflare/deploy/.dev.vars.example](../cloudflare/deploy/.dev.vars.example).
 
 ### Setting Cloudflare secrets
 
@@ -48,9 +48,9 @@ wrangler pages secret put VPS_API_BEARER_TOKEN
 
 ## VPS data API
 
-Read in [src/subflow/config.py](../src/subflow/config.py). Written to
+Read in [vps/subflow/config.py](../vps/subflow/config.py). Written to
 `/etc/subflow/subflow.env` (mode `600`) by the installer. Template:
-[deploy/vps/subflow.env.example](../deploy/vps/subflow.env.example).
+[vps/deploy/subflow.env.example](../vps/deploy/subflow.env.example).
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
