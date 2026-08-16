@@ -66,30 +66,33 @@ def load_json_file_cached(file_path: Path) -> Any:
   若读取期间文件继续变化，则重试并且只缓存前后一致的快照。"""
 
   key = str(file_path)
-  with _JSON_CACHE_LOCK:
-    for _ in range(3):
-      try:
-        before = _json_file_signature(file_path)
-      except OSError:
+  for _ in range(3):
+    try:
+      before = _json_file_signature(file_path)
+    except OSError:
+      with _JSON_CACHE_LOCK:
         _JSON_CACHE.pop(key, None)
-        return {}
+      return {}
 
+    with _JSON_CACHE_LOCK:
       cached = _JSON_CACHE.get(key)
-      if cached is not None and cached[0] == before:
-        return cached[1]
+    if cached is not None and cached[0] == before:
+      return cached[1]
 
-      payload = load_json_file(file_path)
-      try:
-        after = _json_file_signature(file_path)
-      except OSError:
+    payload = load_json_file(file_path)
+    try:
+      after = _json_file_signature(file_path)
+    except OSError:
+      with _JSON_CACHE_LOCK:
         _JSON_CACHE.pop(key, None)
-        return {}
+      return {}
 
-      if before == after:
+    if before == after:
+      with _JSON_CACHE_LOCK:
         _JSON_CACHE[key] = (after, payload)
-        return payload
+      return payload
 
-    return payload
+  return payload
 
 
 
