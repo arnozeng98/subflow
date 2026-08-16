@@ -20,8 +20,8 @@ DEFAULT_USER_DB_PATH = Path(_defaults.USER_DB_PATH)
 # 元数据存储：reality 公钥及每个 inbound 的相关元数据写在此处。
 DEFAULT_META_JSON_PATH = Path(_defaults.META_PATH)
 
-# Telegram 集成状态：首方订阅生成并不需要它，保留路径以记录整个生态。
-DEFAULT_TELEGRAM_JSON_PATH = Path(_defaults.TELEGRAM_PATH)
+# 订阅索引：新管理器生成的版本化、安全字段投影。
+DEFAULT_SUBSCRIPTION_INDEX_PATH = Path(_defaults.SUBSCRIPTION_INDEX_PATH)
 
 # 本地 subflow 部署默认值。
 DEFAULT_ENV_FILE_PATH = Path("/etc/subflow/subflow.env")

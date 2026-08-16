@@ -1,4 +1,4 @@
-name: Build sing-box with v2ray api
+name: 构建含 V2Ray API 的 sing-box
 
 on:
   workflow_dispatch:
@@ -14,55 +14,89 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install dependencies
+      - name: 安装构建依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl tar gzip
 
-      - name: Get latest upstream release
+      - name: 获取上游最新版本
         id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest_tag=$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+          latest_tag=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+          [[ "$latest_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] || {
+            echo "无法识别上游版本：$latest_tag" >&2
+            exit 1
+          }
           echo "tag=$latest_tag" >> "$GITHUB_OUTPUT"
           echo "version=${latest_tag#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Get current release in this repo and decide whether to build
+      - name: 判断当前上游版本是否完整发布
         id: current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          current_tag=$(curl -fsSL https://api.github.com/repos/${{ github.repository }}/releases/latest 2>/dev/null | jq -r '.tag_name // empty' || true)
-          echo "tag=$current_tag" >> "$GITHUB_OUTPUT"
-
-          if [ "${{ steps.latest.outputs.tag }}" = "$current_tag" ]; then
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Already latest: $current_tag"
+          tag="${{ steps.latest.outputs.tag }}"
+          version="${{ steps.latest.outputs.version }}"
+          if release_json=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${tag}" \
+            2>/dev/null); then
+            required_assets=(
+              sing-box-linux-amd64
+              sing-box-linux-arm64
+              sing-box-linux-amd64.tar.gz
+              sing-box-linux-arm64.tar.gz
+              "sing-box-source-${version}.tar.gz"
+              sing-box-LICENSE
+              BUILD_INFO.json
+              RELEASE_NOTES.md
+              sha256sum.txt
+            )
+            missing_assets=()
+            for asset in "${required_assets[@]}"; do
+              if ! jq -e --arg asset "$asset" '[.assets[].name] | index($asset) != null' <<<"$release_json" >/dev/null; then
+                missing_assets+=("$asset")
+              fi
+            done
+            if (( ${#missing_assets[@]} == 0 )); then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              echo "当前版本已完整发布：$tag"
+            else
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+              printf '当前 Release 缺少必要资产，将重建：%s\n' "${missing_assets[*]}"
+            fi
           else
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "Need build: upstream=${{ steps.latest.outputs.tag }}, current=${current_tag:-none}"
+            echo "需要构建：$tag"
           fi
 
-      - name: Show skip reason
+      - name: 显示跳过原因
         if: steps.current.outputs.should_build != 'true'
         run: |
-          echo "Skip build because current repo is already at latest upstream release: ${{ steps.latest.outputs.tag }}"
+          echo "仓库已发布上游版本：${{ steps.latest.outputs.tag }}"
 
-      - name: Checkout sing-box source
+      - name: 检出 sing-box 官方源码
         if: steps.current.outputs.should_build == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: SagerNet/sing-box
           ref: ${{ steps.latest.outputs.tag }}
           path: sing-box-src
           fetch-depth: 0
 
-      - name: Setup Go
+      - name: 配置 Go
         if: steps.current.outputs.should_build == 'true'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.25"
+          go-version-file: sing-box-src/go.mod
           cache: true
           cache-dependency-path: sing-box-src/go.sum
 
-      - name: Prepare build tags and ldflags
+      - name: 准备构建标签与链接参数
         if: steps.current.outputs.should_build == 'true'
         id: meta
         run: |
@@ -70,11 +104,14 @@ jobs:
 
           default_tags=$(tr '\n' ',' < release/DEFAULT_BUILD_TAGS | sed 's/,$//')
 
-          # 1. 不再删除 with_naive_outbound，保留原汁原味的 default tags
-          final_tags=$(printf '%s\n' "$default_tags" | tr ',' '\n' | awk 'NF && !seen[$0]++' | paste -sd',' -)
+          # NaiveProxy 的 Linux purego 构建还需要随包提供 libcronet.so；本项目不提供该库，
+          # 因此删除对应标签，避免发布一个显示支持但运行时缺少组件的功能。
+          final_tags=$(printf '%s\n' "$default_tags" | tr ',' '\n' \
+            | jq -Rr 'select(length > 0) | select(. != "with_naive_outbound")' \
+            | awk '!seen[$0]++' | paste -sd',' -)
 
-          # 2. 追加 v2ray api，以及解决 naive 免 CGO 编译问题的 with_purego
-          final_tags="${final_tags},with_v2ray_api,with_purego"
+          # 上游 Linux 默认标签已包含 with_acme 与 with_wireguard；仅追加流量统计所需标签。
+          final_tags="${final_tags},with_v2ray_api"
 
           # 原项目 ldflags
           base_ldflags=$(tr '\n' ' ' < release/LDFLAGS | sed 's/  */ /g')
@@ -85,10 +122,10 @@ jobs:
           echo "tags=$final_tags" >> "$GITHUB_OUTPUT"
           echo "ldflags=$final_ldflags" >> "$GITHUB_OUTPUT"
 
-          echo "Using tags: $final_tags"
-          echo "Using ldflags: $final_ldflags"
+          echo "构建标签：$final_tags"
+          echo "链接参数：$final_ldflags"
 
-      - name: Build linux amd64
+      - name: 构建 Linux amd64
         if: steps.current.outputs.should_build == 'true'
         run: |
           cd sing-box-src
@@ -100,7 +137,7 @@ jobs:
             -o ../dist/linux-amd64/sing-box \
             ./cmd/sing-box
 
-      - name: Build linux arm64
+      - name: 构建 Linux arm64
         if: steps.current.outputs.should_build == 'true'
         run: |
           cd sing-box-src
@@ -112,21 +149,25 @@ jobs:
             -o ../dist/linux-arm64/sing-box \
             ./cmd/sing-box
 
-      - name: Verify amd64 build tags
+      - name: 验证版本与必要构建标签
         if: steps.current.outputs.should_build == 'true'
         run: |
           chmod +x dist/linux-amd64/sing-box
           dist/linux-amd64/sing-box version
           dist/linux-amd64/sing-box version | grep "${{ steps.latest.outputs.version }}"
           dist/linux-amd64/sing-box version | grep with_v2ray_api
+          dist/linux-amd64/sing-box version | grep with_wireguard
+          dist/linux-amd64/sing-box version | grep with_acme
+          go version -m dist/linux-amd64/sing-box | grep 'CGO_ENABLED=0'
+          go version -m dist/linux-arm64/sing-box | grep 'CGO_ENABLED=0'
 
-      - name: Verify all binaries exist
+      - name: 验证二进制存在
         if: steps.current.outputs.should_build == 'true'
         run: |
           test -f dist/linux-amd64/sing-box
           test -f dist/linux-arm64/sing-box
 
-      - name: Package tar.gz
+      - name: 打包二进制、对应源码与许可证
         if: steps.current.outputs.should_build == 'true'
         run: |
           mkdir -p release-files
@@ -135,42 +176,64 @@ jobs:
 
           cp dist/linux-amd64/sing-box release-files/sing-box-linux-amd64
           cp dist/linux-arm64/sing-box release-files/sing-box-linux-arm64
+          cp sing-box-src/LICENSE release-files/sing-box-LICENSE
+
+          upstream_commit=$(git -C sing-box-src rev-parse HEAD)
+          version="${{ steps.latest.outputs.version }}"
+          git -C sing-box-src archive \
+            --format=tar.gz \
+            --prefix="sing-box-source-${version}/" \
+            --output="../release-files/sing-box-source-${version}.tar.gz" \
+            HEAD
+
+          jq -n \
+            --arg upstream_repository "https://github.com/SagerNet/sing-box" \
+            --arg upstream_tag "${{ steps.latest.outputs.tag }}" \
+            --arg upstream_commit "$upstream_commit" \
+            --arg go_version "$(go env GOVERSION)" \
+            --arg build_tags "${{ steps.meta.outputs.tags }}" \
+            --arg ldflags "${{ steps.meta.outputs.ldflags }}" \
+            '{
+              upstream_repository: $upstream_repository,
+              upstream_tag: $upstream_tag,
+              upstream_commit: $upstream_commit,
+              go_version: $go_version,
+              cgo_enabled: false,
+              architectures: ["linux/amd64", "linux/arm64"],
+              build_tags: ($build_tags | split(",")),
+              ldflags: $ldflags
+            }' > release-files/BUILD_INFO.json
+
+          cat > release-files/RELEASE_NOTES.md <<EOF_NOTES
+          # sing-box ${{ steps.latest.outputs.tag }}
+
+          本版本从 SagerNet/sing-box 官方 tag `${{ steps.latest.outputs.tag }}` 的提交
+          `${upstream_commit}` 构建，保留上游 Linux 默认功能（除未随包提供运行库的
+          `with_naive_outbound`），并追加 `with_v2ray_api`。
+
+          许可证：GPL-3.0-or-later。对应源码、上游许可证、构建参数和校验和均与二进制一同提供。
+          EOF_NOTES
 
           sha256sum release-files/* > release-files/sha256sum.txt
 
-      - name: Delete existing tag release if needed
+      - name: 创建 GitHub Release
         if: steps.current.outputs.should_build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.latest.outputs.tag }}"
-          gh release delete "$tag" -R "${{ github.repository }}" -y --cleanup-tag || true
-
-      - name: Create release with gh
-        if: steps.current.outputs.should_build == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${{ steps.latest.outputs.tag }}"
-          gh release create "$tag" \
-            release-files/sing-box-linux-amd64 \
-            release-files/sing-box-linux-arm64 \
-            release-files/sing-box-linux-amd64.tar.gz \
-            release-files/sing-box-linux-arm64.tar.gz \
-            release-files/sha256sum.txt \
-            --repo "${{ github.repository }}" \
-            --title "$tag" \
-            --notes "Auto-built sing-box with with_v2ray_api and with_naive_outbound"
-
-      - name: Delete old releases
-        if: steps.current.outputs.should_build == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          new_tag="${{ steps.latest.outputs.tag }}"
-          gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '.[].tagName' | \
-            grep -v "^${new_tag}$" | \
-            while read -r old_tag; do
-              echo "Deleting release and tag: $old_tag"
-              gh release delete "$old_tag" --repo "${{ github.repository }}" -y --cleanup-tag || true
-            done
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$tag" release-files/* \
+              --repo "${{ github.repository }}" \
+              --clobber
+            gh release edit "$tag" \
+              --repo "${{ github.repository }}" \
+              --title "$tag" \
+              --notes-file release-files/RELEASE_NOTES.md
+          else
+            gh release create "$tag" \
+              release-files/* \
+              --repo "${{ github.repository }}" \
+              --title "$tag" \
+              --notes-file release-files/RELEASE_NOTES.md
+          fi

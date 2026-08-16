@@ -43,10 +43,10 @@ function errorResponse(status, message) {
 
 /** 500：网关自身配置错误（缺少 VPS 基础 URL / token）。 */
 export function misconfiguredResponse() {
-	return errorResponse(500, "Service unavailable");
+	return errorResponse(500, "服务暂时不可用");
 }
 
 /** 502：VPS 数据 API 调用失败，或返回了无法使用的负载。 */
 export function upstreamErrorResponse() {
-	return errorResponse(502, "Bad gateway");
+	return errorResponse(502, "上游服务不可用");
 }

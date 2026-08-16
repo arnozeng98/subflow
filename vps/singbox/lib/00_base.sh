@@ -7,7 +7,7 @@
 set -Eeuo pipefail
 
 # -------------------- 路径常量 --------------------
-# 注: CONFIG_FILE / USER_DB_FILE / META_FILE / TG_CONFIG_FILE 等跨运行时共享路径
+# 注: CONFIG_FILE / USER_DB_FILE / META_FILE / SUBSCRIPTION_INDEX_FILE 等跨运行时共享路径
 # 已统一到 configs/defaults.yaml，由 scripts/gen_config.py 生成到 00_generated.sh。
 SCRIPT_SELF="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "${BASH_SOURCE[0]:-$0}")"
 SB_TARGET_SCRIPT="/root/sb.sh"
@@ -24,8 +24,6 @@ USER_WATCH_CRON_MARK="sb.sh --user-watch"
 USER_WATCH_CRON_SCHEDULE="*/5 * * * *"
 LOG_MAINTAIN_CRON_MARK="sb.sh --maintain-logs"
 LOG_MAINTAIN_CRON_SCHEDULE="0 4 * * *"
-TG_AGENT_CRON_MARK="sb.sh --tg-agent-sync"
-TG_AGENT_CRON_SCHEDULE="* * * * *"
 UPSTREAM_REFRESH_CRON_MARK="sb.sh --refresh-upstream"
 UPSTREAM_REFRESH_CRON_SCHEDULE="47 3 * * *"
 PERIODIC_SYNC_CRON_MARK="sb.sh --periodic-sync"
@@ -36,11 +34,7 @@ UPSTREAM_TAG_CACHE_FILE="/etc/sing-box-manager/.upstream-tag-cache"
 UPSTREAM_TAG_CACHE_MAX_AGE_SECS=172800
 SCRIPT_LOG_FILE="/var/log/sing-box/access.log"
 LOG_MAX_BYTES=$((10 * 1024 * 1024))
-TG_TASK_RECEIPTS_FILE="/etc/sing-box-manager/tg-task-receipts.json"
-TG_CENTER_APP="/etc/sing-box-manager/tg-center-bot.py"
-TG_CENTER_SERVICE="sb-tg-bot"
 SB_LOCK_FILE="/var/lock/singbox-manager.lock"
-TG_AGENT_LOCK_FILE="/var/lock/singbox-tg-agent.lock"
 
 # 业务时区：所有"今天/本月"判断（重置日、到期日、续期）都按它算，
 # 与 OS 时区无关，避免跨 VPS 因 OS 时区不同导致重置/到期时刻分裂。

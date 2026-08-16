@@ -1,14 +1,13 @@
 name = "subflow"
 compatibility_date = "2026-06-08"
 
-# Pages Direct Upload needs a static-assets output directory. This project is
-# Functions-only, so the directory is the project root; wrangler uploads the
-# `functions/` folder and excludes its own config file from the assets.
+# Pages Direct Upload 需要一个静态资源输出目录。本项目仅包含 Functions，因此该目录为
+# 项目根目录；wrangler 会上传 `functions/` 文件夹，并从资源中排除其自身的配置文件。
 pages_build_output_dir = "."
 
-# Secrets (VPS_API_BASE_URL, VPS_API_BEARER_TOKEN) must NOT live here. Set them
-# as Cloudflare Pages secrets. Only non-sensitive defaults belong in [vars];
-# every value is also overridable per-environment in the dashboard.
+# 机密值（VPS_API_BASE_URL、VPS_API_BEARER_TOKEN）不得写在这里。请将其设置为
+# Cloudflare Pages secrets。[vars] 中只能存放非敏感默认值；每个值也可以在
+# Dashboard 中按环境覆盖。
 [vars]
 VPS_RAW_PATH_TEMPLATE = "/internal/raw/{user}"
 REQUEST_TIMEOUT_MS = "8000"

@@ -1,42 +1,42 @@
 # ============================================================
-# Cloudflare Pages local development variables (.dev.vars)
+# Cloudflare Pages 本地开发变量（.dev.vars）
 # ============================================================
-# Copy this file to `.dev.vars` for `wrangler pages dev`. In production, set the
-# sensitive values as Pages *secrets* (Dashboard > Settings > Environment
-# variables, type "Secret") rather than committing them anywhere.
+# 将此文件复制为 `.dev.vars`，供 `wrangler pages dev` 使用。在生产环境中，请将
+# 敏感值设置为 Pages *secrets*（Dashboard > Settings > Environment variables，
+# 类型选择 "Secret"），不要将其提交到任何位置。
 # ============================================================
 
-# --- VPS data API connection ---
-# Base URL of the private VPS data API (the subflow service).
+# --- VPS 数据 API 连接 ---
+# 私有 VPS 数据 API（subflow 服务）的基础 URL。
 VPS_API_BASE_URL=https://api.example.com
-# SECRET. Bearer token; must match SUBFLOW_API_TOKEN on the VPS.
+# 机密。Bearer token；必须与 VPS 上的 SUBFLOW_API_TOKEN 一致。
 VPS_API_BEARER_TOKEN=replace-me
-# Path template for the raw data endpoint. {user} is URL-encoded.
+# 原始数据端点的路径模板。{user} 已经过 URL 编码。
 VPS_RAW_PATH_TEMPLATE=/internal/raw/{user}
 
-# --- Request & cache tuning (optional) ---
+# --- 请求与缓存调优（可选）---
 REQUEST_TIMEOUT_MS=8000
-# How long fetched templates are cached in the Cloudflare Cache API (seconds).
+# 获取到的模板在 Cloudflare Cache API 中的缓存时长（秒）。
 TEMPLATE_CACHE_TTL_SECONDS=21600
-# Cache-Control for subscription responses. Defaults to a sensible edge cache.
-# RESPONSE_CACHE_CONTROL=public, s-maxage=21600, max-age=0
+# 订阅正文包含用户节点凭据，默认禁止浏览器和共享代理缓存。
+# 只有充分理解凭据泄露风险时才应覆盖此值。
+# RESPONSE_CACHE_CONTROL=private, max-age=60
 
-# --- Presentation (optional) ---
+# --- 展示设置（可选）---
 SUBFLOW_PROFILE_NAME=Subflow
 SUBFLOW_DEFAULT_FORMAT=universal
 
-# --- Optional base template overrides ---
-# Leave empty to use the built-in complete skeletons. If set, the URL is fetched
-# (and Cache-API cached) and used as the base template for that format.
+# --- 基础模板覆盖项（可选）---
+# 留空则使用内置的完整骨架。若已设置，系统会获取该 URL（并通过 Cache API 缓存），
+# 将其用作对应格式的基础模板。
 SUBFLOW_CLASH_TEMPLATE_URL=
 SUBFLOW_SINGBOX_TEMPLATE_URL=
 SUBFLOW_SURGE_TEMPLATE_URL=
 SUBFLOW_QUANTUMULTX_TEMPLATE_URL=
 SUBFLOW_SHADOWROCKET_TEMPLATE_URL=
 
-# --- Official rule sources (optional overrides) ---
-# Generated configs reference these continuously-updated sources. Override only
-# to pin a mirror or a specific version.
+# --- 官方规则源（可选覆盖项）---
+# 生成的配置会引用这些持续更新的规则源。仅在需要固定镜像或特定版本时覆盖。
 # SUBFLOW_CLASH_RULES_BASE=https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release
 # SUBFLOW_SINGBOX_GEOSITE_BASE=https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set
 # SUBFLOW_SINGBOX_GEOIP_BASE=https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set

@@ -52,29 +52,30 @@ EOF_V2V
 
 # ---------- grpcurl 管理 ----------
 
+grpcurl_version_matches() {
+  [ -x "$GRPCURL_BIN" ] || return 1
+  "$GRPCURL_BIN" -version 2>&1 | grep -Fq "$GRPCURL_VERSION"
+}
+
 ensure_grpcurl() {
-  if [ -x "$GRPCURL_BIN" ]; then
+  if grpcurl_version_matches; then
     return 0
   fi
-  local asset_pattern tag api api_json tmp_dir download_url
+  [ -x "$GRPCURL_BIN" ] && warn "检测到其他版本的 grpcurl，将替换为项目锁定版本 ${GRPCURL_VERSION}。"
+
+  local asset_arch asset_name expected_sha actual_sha tmp_dir download_url
   case "$(uname -m)" in
-    x86_64) asset_pattern='linux_x86_64.tar.gz' ;;
-    aarch64|arm64) asset_pattern='linux_arm64.tar.gz' ;;
+    x86_64) asset_arch='x86_64' ;;
+    aarch64|arm64) asset_arch='arm64' ;;
     *)
       warn "当前架构暂不支持自动下载 grpcurl：$(uname -m)"
       return 1
       ;;
   esac
-  api="https://api.github.com/repos/fullstorydev/grpcurl/releases/latest"
-  api_json="$(curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 "$api" 2>/dev/null || true)"
-  [ -n "$api_json" ] || { warn "未获取到 grpcurl 最新版本。"; return 1; }
-  tag="$(echo "$api_json" | jq -r '.tag_name // empty' 2>/dev/null)" || true
-  [ -n "$tag" ] || { warn "未获取到 grpcurl 最新版本。"; return 1; }
-  download_url="$(echo "$api_json" | jq -r --arg p "$asset_pattern" '.assets[]?.browser_download_url | select(contains($p))' 2>/dev/null | head -n1)" || true
-  [ -n "$download_url" ] || { warn "未找到 grpcurl 适配当前架构的安装包。"; return 1; }
-  local checksums_url asset_name expected_sha actual_sha
-  checksums_url="$(echo "$api_json" | jq -r '.assets[]?.browser_download_url | select(ascii_downcase | test("checksums?\\.txt$"))' 2>/dev/null | head -n1)" || true
-  asset_name="$(basename "$download_url")"
+
+  asset_name="grpcurl_${GRPCURL_VERSION}_linux_${asset_arch}.tar.gz"
+  expected_sha="${GRPCURL_SHA256[$asset_arch]}"
+  download_url="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/${asset_name}"
   tmp_dir="$(make_disk_tmp_dir sb-install)" || { warn "创建临时目录失败。"; return 1; }
   say "下载流量统计组件..."
   if ! download_file "$download_url" "$tmp_dir/grpcurl.tar.gz" 20 3; then
@@ -82,29 +83,28 @@ ensure_grpcurl() {
     warn "下载 grpcurl 失败。"
     return 1
   fi
-  # 完整性校验：比对官方 release 的 sha256 校验文件，防止下载被篡改
-  if [ -n "$checksums_url" ] && curl -fsSL --connect-timeout 20 --retry 3 "$checksums_url" -o "$tmp_dir/checksums.txt" >/dev/null 2>&1; then
-    expected_sha="$(awk -v f="$asset_name" '{n=$2; sub(/^.*\//,"",n); if (n==f) {print $1; exit}}' "$tmp_dir/checksums.txt")"
-    actual_sha="$(sha256sum "$tmp_dir/grpcurl.tar.gz" | awk '{print $1}')"
-    if [ -n "$expected_sha" ] && [ "$expected_sha" != "$actual_sha" ]; then
-      rm -rf "$tmp_dir"
-      warn "grpcurl 校验失败（sha256 不匹配），已取消安装。"
-      return 1
-    fi
-  else
-    warn "未获取到 grpcurl 校验文件，跳过完整性校验。"
+
+  actual_sha="$(sha256sum "$tmp_dir/grpcurl.tar.gz" | awk '{print $1}')"
+  if [ "${actual_sha}" != "${expected_sha}" ]; then
+    rm -rf "$tmp_dir"
+    warn "grpcurl SHA256 校验失败，已取消安装。"
+    return 1
   fi
+
   tar -xzf "$tmp_dir/grpcurl.tar.gz" -C "$tmp_dir" || { rm -rf "$tmp_dir"; warn "解压 grpcurl 失败。"; return 1; }
   [ -f "$tmp_dir/grpcurl" ] || { rm -rf "$tmp_dir"; warn "grpcurl 安装包中未找到 grpcurl。"; return 1; }
+  chmod +x "$tmp_dir/grpcurl"
+  if ! "$tmp_dir/grpcurl" -version 2>&1 | grep -Fq "$GRPCURL_VERSION"; then
+    rm -rf "$tmp_dir"
+    warn "grpcurl 二进制无法运行或版本不匹配。"
+    return 1
+  fi
   install -m 755 "$tmp_dir/grpcurl" "$GRPCURL_BIN" || { rm -rf "$tmp_dir"; warn "安装 grpcurl 失败。"; return 1; }
   rm -rf "$tmp_dir"
-  return 0
+  grpcurl_version_matches
 }
 
 ensure_grpcurl_logged() {
-  if [ -x "$GRPCURL_BIN" ]; then
-    return 0
-  fi
   if ensure_grpcurl; then
     return 0
   fi

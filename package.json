@@ -1,0 +1,12 @@
+{
+  "name": "subflow",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/js/cache-control.test.mjs tests/js/raw-client.test.mjs",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

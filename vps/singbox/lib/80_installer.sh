@@ -135,7 +135,7 @@ is_install_complete() {
   # 6.0.8 及以前的老 cron 残留也算"组件不一致"，引导用户清理。
   ! _cron_job_installed "$USER_WATCH_CRON_MARK" || return 1
   ! _cron_job_installed "$LOG_MAINTAIN_CRON_MARK" || return 1
-  ! _cron_job_installed "$TG_AGENT_CRON_MARK" || return 1
+  ! _cron_job_installed "--tg-agent-sync" || return 1
   ! _cron_job_installed "$UPSTREAM_REFRESH_CRON_MARK" || return 1
   singbox_service_active || return 1
   return 0
@@ -234,7 +234,6 @@ _cron_job_match_pattern() {
   case "$mark" in
     "$USER_WATCH_CRON_MARK") echo "--user-watch" ;;
     "$LOG_MAINTAIN_CRON_MARK") echo "--maintain-logs" ;;
-    "$TG_AGENT_CRON_MARK") echo "--tg-agent-sync" ;;
     "$UPSTREAM_REFRESH_CRON_MARK") echo "--refresh-upstream" ;;
     "$PERIODIC_SYNC_CRON_MARK") echo "--periodic-sync" ;;
     "$DAILY_MAINTENANCE_CRON_MARK") echo "--daily-maintenance" ;;
@@ -355,12 +354,11 @@ install_daily_maintenance_cron(){ _install_cron_job "$DAILY_MAINTENANCE_CRON_MAR
 remove_daily_maintenance_cron() { _remove_cron_job "$DAILY_MAINTENANCE_CRON_MARK"; }
 
 # 6.0.9 起合并定时任务的执行入口。
-# periodic-sync：每 3 分钟，跑 user_watch + tg_agent_sync（TG 内部自检 enabled）。
+# periodic-sync：每 3 分钟同步用户用量与状态。
 # daily-maintenance：本地凌晨一次，跑 log 截尾 + 上游版本号刷新缓存。
 # 两个 runner 内部都用 `|| true` 隔离故障，避免一步挂导致另一步不跑。
 periodic_sync_run() {
   user_watch_run || true
-  tg_agent_sync || true
 }
 
 daily_maintenance_run() {
@@ -682,11 +680,10 @@ install_or_update_singbox() {
   # 清理 6.0.8 及以前残留的 4 个老 cron（墓志铭入口让它们不出错，但应清掉避免无意义触发）
   remove_user_watch_cron || true
   remove_log_maintain_cron || true
-  remove_tg_agent_cron || true
+  cleanup_legacy_telegram_runtime || true
   remove_upstream_refresh_cron || true
   refresh_upstream_tag_cache "$tag" >/dev/null 2>&1 || true
   user_manager_background_sync || warn "用户管理后台同步初始化失败。下次 periodic-sync cron 会重试。"
-  tg_refresh_after_singbox_install || true
 
   # 走到这里说明 service 已经起来（事务化保证）；后续步骤即使失败也只 warn，不影响 stamp
   echo "$tag" > "$SINGBOX_VERSION_STAMP" || {
@@ -855,6 +852,36 @@ sync_system_time_chrony() {
 
 # ---------- 卸载 ----------
 
+cleanup_legacy_telegram_runtime() {
+  local service="sb-tg-bot" config_file="/etc/sing-box-manager/telegram.json"
+  local backup_file="${config_file}.disabled"
+  _remove_cron_job "--tg-agent-sync" || true
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl stop "$service" >/dev/null 2>&1 || true
+      systemctl disable "$service" >/dev/null 2>&1 || true
+      rm -f "/etc/systemd/system/${service}.service"
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      ;;
+    openrc)
+      rc-service "$service" stop >/dev/null 2>&1 || true
+      rc-update del "$service" default >/dev/null 2>&1 || true
+      rm -f "/etc/init.d/${service}"
+      ;;
+  esac
+  if [ -f "$config_file" ] && [ ! -e "$backup_file" ]; then
+    mv "$config_file" "$backup_file"
+    chmod 600 "$backup_file" >/dev/null 2>&1 || true
+  else
+    rm -f "$config_file"
+  fi
+  rm -f \
+    /etc/sing-box-manager/tg-center-bot.py \
+    /etc/sing-box-manager/tg-task-receipts.json \
+    /var/lock/singbox-tg-agent.lock
+  rmdir /var/lock/singbox-tg-agent.lock.d >/dev/null 2>&1 || true
+}
+
 wireproxy_warp_environment_present() {
   [ -s /etc/wireguard/proxy.conf ] && return 0
   local_warp_socks_proxy_url >/dev/null 2>&1 && return 0
@@ -872,8 +899,7 @@ print_full_cleanup_hint() {
   echo "rm -rf /etc/sing-box-manager"
   echo "rm -rf /etc/sing-box"
   echo "rm -rf /var/log/sing-box"
-  echo "rm -f /var/lock/singbox-manager.lock /var/lock/singbox-tg-agent.lock"
-  echo "rm -rf /var/lock/singbox-tg-agent.lock.d"
+  echo "rm -f /var/lock/singbox-manager.lock"
 }
 
 print_wireproxy_cleanup_hint_if_present() {
@@ -894,11 +920,10 @@ uninstall_singbox_keep_config() {
   echo "  - sing-box 服务"
   echo "  - sing-box 主程序"
   echo "  - 流量统计/日志维护定时任务"
-  echo "  - TG Bot 服务与上报任务"
   echo
   echo "以下内容会保留："
   echo "  - sing-box 配置：/etc/sing-box"
-  echo "  - 用户数据与 TG 配置：/etc/sing-box-manager"
+  echo "  - 用户数据：/etc/sing-box-manager"
   echo "  - 日志文件：/var/log/sing-box"
   echo "  - 管理脚本入口：/root/sb.sh、/usr/local/bin/s"
   echo
@@ -909,11 +934,9 @@ uninstall_singbox_keep_config() {
   remove_daily_maintenance_cron || true
   remove_user_watch_cron || true
   remove_log_maintain_cron || true
-  remove_tg_agent_cron || true
   remove_upstream_refresh_cron || true
   rm -f "$UPSTREAM_TAG_CACHE_FILE" >/dev/null 2>&1 || true
-  tg_stop_center_service || true
-  tg_mark_disabled_keep_config || true
+  cleanup_legacy_telegram_runtime || true
   remove_all_singbox_service_units
   # 清理官方包可能创建的系统用户/组
   if has_cmd deluser; then

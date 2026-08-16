@@ -10,6 +10,9 @@
 // 公共路由约定：用户名是短、不透露业务含义、且对文件系统/URL 安全的。
 export const USERNAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+// VPS 安全投影与 Cloudflare 节点模型之间的数据契约版本。
+export const RAW_PAYLOAD_SCHEMA_VERSION = 1;
+
 // 在格式协商与分发过程中通用的客户端格式规范标识符。
 export const FORMAT = Object.freeze({
 	CLASH: "clash",

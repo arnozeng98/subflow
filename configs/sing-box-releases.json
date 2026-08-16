@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "repository": "arnozeng98/subflow",
+  "latest": "1.13.18",
+  "releases": {
+    "1.13.18": {
+      "upstream_repository": "SagerNet/sing-box",
+      "upstream_tag": "v1.13.18",
+      "assets": {
+        "amd64": {
+          "name": "sing-box-linux-amd64",
+          "sha256": "ae4e9065625c2eb0f88a9de8c4ca8927fec90e32e983756252e09ddd402dc72a"
+        },
+        "arm64": {
+          "name": "sing-box-linux-arm64",
+          "sha256": "5f92825d4073accb270dbeebdf55d4b3fabba99dcec05177de26d8e7811bda3d"
+        }
+      }
+    }
+  }
+}

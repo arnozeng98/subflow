@@ -8,6 +8,7 @@
 
 import json
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 
@@ -37,37 +38,60 @@ def load_json_file(file_path: Path) -> Any:
   try:
     with file_path.open("r", encoding="utf-8") as handle:
       return json.load(handle)
-  except FileNotFoundError:
-    return {}
-  except json.JSONDecodeError:
+  except (OSError, UnicodeError, json.JSONDecodeError):
     return {}
 
 
-# 进程内的上游 JSON 文件缓存，以绝对路径为键。每个条目记录读取时的修改时间
-# （mtime），因此只有当上游管理器真正重写了文件时，陈旧的文件才会被重新解析。
+# 进程内的上游 JSON 文件缓存，以绝对路径为键。每个条目记录读取时的文件签名，
+# 因此只有当上游管理器真正重写或原子替换文件时，陈旧内容才会被重新解析。
 # 这避免了在每次订阅请求时都去重复读取、重复解析可能体量较大的 config.json 文件。
-_JSON_CACHE: dict[str, tuple[float, Any]] = {}
+_JSON_CACHE: dict[str, tuple[tuple[int, int, int, int], Any]] = {}
+_JSON_CACHE_LOCK = Lock()
+
+
+def _json_file_signature(file_path: Path) -> tuple[int, int, int, int]:
+  stat_result = file_path.stat()
+  return (
+    stat_result.st_mtime_ns,
+    stat_result.st_ctime_ns,
+    stat_result.st_size,
+    stat_result.st_ino,
+  )
 
 
 def load_json_file_cached(file_path: Path) -> Any:
-  """加载 JSON 文件；在文件 mtime 未变期间复用上一次的解析结果。
+  """加载 JSON 文件；在文件签名未变期间复用上一次的解析结果。
 
-  若文件已被删除（抛出 FileNotFoundError），则清除其缓存条目并返回空 dict；若 mtime
-  发生变化，则重新读取并更新缓存。"""
+  签名包含纳秒级 mtime/ctime、大小和 inode，能够识别保留 mtime 的原子替换。
+  若读取期间文件继续变化，则重试并且只缓存前后一致的快照。"""
 
   key = str(file_path)
-  try:
-    mtime = file_path.stat().st_mtime
-  except FileNotFoundError:
-    _JSON_CACHE.pop(key, None)
-    return {}
+  for _ in range(3):
+    try:
+      before = _json_file_signature(file_path)
+    except OSError:
+      with _JSON_CACHE_LOCK:
+        _JSON_CACHE.pop(key, None)
+      return {}
 
-  cached = _JSON_CACHE.get(key)
-  if cached is not None and cached[0] == mtime:
-    return cached[1]
+    with _JSON_CACHE_LOCK:
+      cached = _JSON_CACHE.get(key)
+    if cached is not None and cached[0] == before:
+      return cached[1]
 
-  payload = load_json_file(file_path)
-  _JSON_CACHE[key] = (mtime, payload)
+    payload = load_json_file(file_path)
+    try:
+      after = _json_file_signature(file_path)
+    except OSError:
+      with _JSON_CACHE_LOCK:
+        _JSON_CACHE.pop(key, None)
+      return {}
+
+    if before == after:
+      with _JSON_CACHE_LOCK:
+        _JSON_CACHE[key] = (after, payload)
+      return payload
+
   return payload
 
 

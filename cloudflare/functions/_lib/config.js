@@ -43,8 +43,7 @@ export function resolveConfig(env) {
 		// 请求与缓存的调优参数。
 		requestTimeoutMs: positiveInteger(env.REQUEST_TIMEOUT_MS, DEFAULTS.REQUEST_TIMEOUT_MS),
 		templateCacheTtlSeconds: cacheTtl,
-		responseCacheControl:
-			nonEmptyString(env.RESPONSE_CACHE_CONTROL) || `public, s-maxage=${cacheTtl}, max-age=0`,
+		responseCacheControl: nonEmptyString(env.RESPONSE_CACHE_CONTROL) || "no-store",
 
 		// 呈现相关。
 		profileName: nonEmptyString(env.SUBFLOW_PROFILE_NAME) || DEFAULTS.PROFILE_NAME,

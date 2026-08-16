@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# subflow management menu  (invoked as `sf`)
+# subflow 管理菜单（通过 `sf` 调用）
 # ============================================================
-# A friendly control panel for an installed subflow service: view status and
-# details, edit any setting (including ones skipped at install), start/stop/
-# restart, toggle autostart, tail logs, update, or uninstall. Reached through
-# the /usr/local/bin/sf symlink; resolves its real path to source lib.sh.
+# 已安装 subflow 服务的易用控制面板：查看状态和详细信息、编辑任意设置
+#（包括安装时跳过的设置）、启动、停止、重启、切换开机自启、持续查看日志、
+# 更新或卸载。通过 /usr/local/bin/sf 符号链接进入；解析其真实路径以引入 lib.sh。
 # ============================================================
 
 set -Eeuo pipefail
@@ -19,12 +18,12 @@ source "${SCRIPT_DIR}/lib.sh"
 require_root
 init_config_meta
 
-# ----- Service switch actions ------------------------------------------------
-do_start()   { systemctl start subflow.service   && ok "服务已启动～"; }
-do_stop()    { systemctl stop subflow.service     && ok "服务已停止。"; }
-do_restart() { systemctl restart subflow.service  && ok "服务已重启～"; }
-do_enable()  { systemctl enable subflow.service >/dev/null 2>&1 && ok "已设为开机自启。"; }
-do_disable() { systemctl disable subflow.service >/dev/null 2>&1 && ok "已取消开机自启。"; }
+# ----- 服务开关操作 -----------------------------------------------------------
+do_start()   { service_start   && ok "服务已启动～"; }
+do_stop()    { service_stop    && ok "服务已停止。"; }
+do_restart() { service_restart && ok "服务已重启～"; }
+do_enable()  { service_enable  && ok "已设为开机自启。"; }
+do_disable() { service_disable && ok "已取消开机自启。"; }
 
 switch_menu() {
   while true; do
@@ -47,7 +46,7 @@ switch_menu() {
   done
 }
 
-# ----- Edit configuration ----------------------------------------------------
+# ----- 编辑配置 --------------------------------------------------------------
 edit_one() {
   local key="$1"
   local current="${CFG_VALUE[$key]}"
@@ -74,7 +73,7 @@ edit_one() {
   fi
   if [[ "${key}" == "SUBFLOW_API_TOKEN" && "${reply}" == "g" ]]; then
     reply="$(generate_token)"
-    info "已重新生成 Token。"
+    info "已重新生成令牌。"
   fi
   CFG_VALUE[$key]="${reply}"
   ok "已更新（保存后生效）。"
@@ -122,7 +121,7 @@ edit_menu() {
   done
 }
 
-# ----- Update / reinstall ----------------------------------------------------
+# ----- 更新和重新安装 ---------------------------------------------------------
 do_update() {
   printf '%b\n' ""
   step "从 GitHub 拉取最新源码并更新…"
@@ -130,12 +129,13 @@ do_update() {
   copy_runtime
   install_cli
   install_singbox_manager || warn "sing-box 管理器刷新失败。"
+  cleanup_legacy_telegram_runtime || warn "旧版 Telegram 运行组件清理未完成，请检查系统服务与 cron。"
   reload_and_restart
   cleanup_tmp
   ok "已更新到最新版本并重启～ ✧*。"
 }
 
-# ----- Uninstall -------------------------------------------------------------
+# ----- 卸载 ------------------------------------------------------------------
 do_uninstall() {
   printf '%b\n' ""
   warn "即将卸载 subflow 数据 API（sing-box 与用户数据保留；如需卸载 sing-box 请运行 s → 8）。确认？[y/N]"
@@ -144,23 +144,21 @@ do_uninstall() {
   if [[ -x "${SCRIPT_DIR}/uninstall.sh" ]]; then
     bash "${SCRIPT_DIR}/uninstall.sh"
   else
-    systemctl stop subflow.service >/dev/null 2>&1 || true
-    systemctl disable subflow.service >/dev/null 2>&1 || true
-    rm -f "${SYSTEMD_UNIT}"; systemctl daemon-reload >/dev/null 2>&1 || true
+    remove_subflow_service
     rm -f "${SF_LINK}"; rm -rf "${INSTALL_ROOT}" "${ENV_DIR}"
     ok "subflow 已卸载。后会有期～ (｡•́︿•̀｡)"
   fi
   exit 0
 }
 
-# ----- Live logs -------------------------------------------------------------
+# ----- 实时日志 --------------------------------------------------------------
 do_logs() {
   printf '%b\n' ""
   info "实时日志（Ctrl+C 退出）…"
-  journalctl -u subflow.service -f -n 50 || true
+  service_logs || true
 }
 
-# ----- Cloudflare deploy -----------------------------------------------------
+# ----- Cloudflare 部署 --------------------------------------------------------
 do_cf_deploy() {
   if [[ -x "${SCRIPT_DIR}/cf-deploy.sh" ]]; then
     bash "${SCRIPT_DIR}/cf-deploy.sh" || warn "Cloudflare 部署未完成。"
@@ -169,7 +167,7 @@ do_cf_deploy() {
   fi
 }
 
-# ----- sing-box manager ------------------------------------------------------
+# ----- sing-box 管理器 --------------------------------------------------------
 do_singbox_manager() {
   if [[ -x "${SB_MANAGER_SCRIPT}" ]]; then
     bash "${SB_MANAGER_SCRIPT}"
@@ -180,14 +178,14 @@ do_singbox_manager() {
   fi
 }
 
-# ----- Main menu -------------------------------------------------------------
+# ----- 主菜单 ----------------------------------------------------------------
 main_menu() {
   while true; do
     clear 2>/dev/null || true
     banner
     show_info mask
     printf '%b\n' "  ${C_PINK}${C_BOLD}♡ 主菜单 ♡${C_RESET}"
-    printf '%b\n' "    ${C_LAV}1${C_RESET}) 查看运行状态        ${C_LAV}2${C_RESET}) 查看详细信息(含完整 Token)"
+    printf '%b\n' "    ${C_LAV}1${C_RESET}) 查看运行状态        ${C_LAV}2${C_RESET}) 查看详细信息(含完整令牌)"
     printf '%b\n' "    ${C_LAV}3${C_RESET}) 修改配置            ${C_LAV}4${C_RESET}) 服务开关(启停/自启)"
     printf '%b\n' "    ${C_LAV}5${C_RESET}) 实时日志            ${C_LAV}6${C_RESET}) 更新到最新版本"
     printf '%b\n' "    ${C_LAV}7${C_RESET}) Cloudflare 部署/重新部署"
@@ -196,7 +194,7 @@ main_menu() {
     printf '%b' "  ${C_PINK}请选择${C_RESET}: "
     local c; read -r c || c="0"
     case "${c}" in
-      1) clear 2>/dev/null || true; banner; systemctl status subflow.service --no-pager || true; pause ;;
+      1) clear 2>/dev/null || true; banner; service_status || true; pause ;;
       2) clear 2>/dev/null || true; banner; show_info full; pause ;;
       3) edit_menu; pause ;;
       4) switch_menu ;;
@@ -217,10 +215,10 @@ if ! is_installed; then
   exit 1
 fi
 
-# Subcommands: `sf status|restart|edit|…`; bare `sf` opens the menu.
+# 子命令：`sf status|restart|edit|…`；不带参数的 `sf` 会打开菜单。
 case "${1:-menu}" in
   menu|"")   main_menu ;;
-  status)    banner; systemctl status subflow.service --no-pager || true ;;
+  status)    banner; service_status || true ;;
   info)      banner; show_info full ;;
   edit)      edit_menu ;;
   start)     do_start ;;

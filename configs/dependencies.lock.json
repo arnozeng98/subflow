@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "wrangler": {
+    "version": "4.48.0",
+    "node_min_major": 18,
+    "integrity": "sha512-qkcwysx96XNDWXl4w/5VjAZjqWatxAq9chMXVeqv/etL9e06ouPaZ+Hwwbe5XYV2GYf/XhZVZ3fHJcTBrq60gQ=="
+  },
+  "cloudflared": {
+    "version": "2026.8.2",
+    "sha256": {
+      "amd64": "fcfb02b575a52ca1af2e3267af4e1517bcdeb30ac48c834c69abaed3c0576ad2",
+      "arm64": "7747d94570fb390cf47dcb4f9555c193c6355cda9793f0d878d9049e5d6a7790",
+      "arm": "19809425f60a6261241dfa66a42b4115bab07c295396a3c4d5d7c247fc4e1412"
+    }
+  },
+  "grpcurl": {
+    "version": "1.9.3",
+    "sha256": {
+      "x86_64": "a926b62a85787ccf73ef8736b3ae554f1242e39d92bb8767a79d6dd23b11d1d5",
+      "arm64": "b20a00c1cb82ab81ec32696766d4076e99b4cb5ca0823a71767ba64dbea0f263"
+    }
+  }
+}

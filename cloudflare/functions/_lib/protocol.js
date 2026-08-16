@@ -87,8 +87,8 @@ function shadowsocksPassword(inbound, userPassword) {
 /**
  * 为整个原始负载构建规范化后的节点列表。
  *
- * @param {object} raw Raw payload from the VPS data API.
- * @returns {Array<object>} Normalized nodes.
+ * @param {object} raw 来自 VPS 数据 API 的原始负载。
+ * @returns {Array<object>} 规范化后的节点。
  */
 export function buildNodes(raw) {
 	const server = String(raw?.public_ip || "");
