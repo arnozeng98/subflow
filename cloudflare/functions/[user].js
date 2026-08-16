@@ -38,7 +38,7 @@ export async function onRequestGet(context) {
 
 	let raw;
 	try {
-		const result = await fetchRawPayload(config, username, request);
+		const result = await fetchRawPayload(config, username);
 		if (result.kind === "not-found") {
 			return next();
 		}

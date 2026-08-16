@@ -1,10 +1,9 @@
 """
-Runtime configuration loading.
+运行时配置加载。
 
-The VPS service is a pure data API. It reads every setting from environment
-variables so the installer stays simple and systemd integration is clean. No
-business value (server address, domains, tokens) is ever hard-coded here; the
-fields below are the single source of truth for runtime behavior.
+VPS 服务是纯数据 API。它从环境变量读取每项设置，以保持安装程序简洁，
+并实现清晰的 systemd 集成。此处绝不会硬编码任何业务值（服务器地址、域名、令牌）；
+以下字段是运行时行为的唯一事实来源。
 """
 
 from dataclasses import dataclass
@@ -17,7 +16,7 @@ from . import _defaults
 
 @dataclass(frozen=True)
 class AppConfig:
-  """Immutable runtime configuration for the subflow private data API."""
+  """subflow 私有数据 API 的不可变运行时配置。"""
 
   listen_host: str
   listen_port: int
@@ -29,6 +28,7 @@ class AppConfig:
   vless_ws_domain: str
   vmess_ws_domain: str
   include_disabled_users: bool
+  subscription_index_path: Path = paths.DEFAULT_SUBSCRIPTION_INDEX_PATH
 
 
 def _read_bool(name: str, default: bool) -> bool:
@@ -54,12 +54,11 @@ def _read_path(name: str, default: Path) -> Path:
 
 def load_config() -> AppConfig:
   """
-  Build application configuration from environment variables.
+  从环境变量构建应用程序配置。
 
-  Path defaults mirror the bundled sing-box manager's layout so a fresh subflow
-  instance attaches to the local sing-box data without re-discovering file locations.
-  Every operator-facing value (public IP, WebSocket domains, token) must be
-  supplied via environment variables and is never assumed from code.
+  路径默认值与捆绑的 sing-box 管理器布局一致，使全新的 subflow 实例无需重新查找
+  文件位置即可连接到本地 sing-box 数据。所有面向运维人员的值（公网 IP、WebSocket
+  域名、令牌）都必须通过环境变量提供，绝不会由代码自行假定。
   """
 
   return AppConfig(
@@ -73,4 +72,8 @@ def load_config() -> AppConfig:
     vless_ws_domain=os.environ.get("SUBFLOW_WS_DOMAIN", "").strip(),
     vmess_ws_domain=os.environ.get("SUBFLOW_VMESS_WS_DOMAIN", "").strip(),
     include_disabled_users=_read_bool("SUBFLOW_INCLUDE_DISABLED_USERS", False),
+    subscription_index_path=_read_path(
+      "SUBFLOW_SUBSCRIPTION_INDEX_PATH",
+      paths.DEFAULT_SUBSCRIPTION_INDEX_PATH,
+    ),
   )

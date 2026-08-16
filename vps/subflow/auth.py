@@ -6,6 +6,8 @@
 机器对机器（machine-to-machine）鉴权机制，且该机制可以存放在密钥存储中。
 """
 
+from hmac import compare_digest
+
 from .config import AppConfig
 
 
@@ -17,4 +19,6 @@ def is_authorized(headers, config: AppConfig) -> bool:
 
   if not config.api_token:
     return False
-  return headers.get("Authorization", "") == f"Bearer {config.api_token}"
+  provided = headers.get("Authorization", "")
+  expected = f"Bearer {config.api_token}"
+  return compare_digest(provided, expected)

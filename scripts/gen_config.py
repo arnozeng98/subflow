@@ -17,6 +17,8 @@
 """
 
 from pathlib import Path
+import sys
+from typing import Optional
 
 # 仓库根目录 = 本文件所在的 scripts/ 的上一级。
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -36,7 +38,7 @@ def parse_yaml(text: str) -> dict:
       - 顶层 `name:`（无值）开启一个小节，其下缩进项写入该小节字典。
     """
     data: dict = {}
-    section: dict | None = None
+    section: Optional[dict] = None
     for raw in text.splitlines():
         line = raw.rstrip()
         stripped = line.strip()
@@ -65,7 +67,7 @@ def render_bash(paths: dict) -> str:
         f'CONFIG_FILE="{paths["singbox_config"]}"',
         f'USER_DB_FILE="{paths["user_db"]}"',
         f'META_FILE="{paths["meta"]}"',
-        f'TG_CONFIG_FILE="{paths["telegram"]}"',
+        f'SUBSCRIPTION_INDEX_FILE="{paths["subscription_index"]}"',
         "",
     ]
     return "\n".join(lines)
@@ -79,7 +81,7 @@ def render_python(paths: dict, data_api: dict) -> str:
         f'SINGBOX_CONFIG_PATH = "{paths["singbox_config"]}"',
         f'USER_DB_PATH = "{paths["user_db"]}"',
         f'META_PATH = "{paths["meta"]}"',
-        f'TELEGRAM_PATH = "{paths["telegram"]}"',
+        f'SUBSCRIPTION_INDEX_PATH = "{paths["subscription_index"]}"',
         f'DATA_API_LISTEN_HOST = "{data_api["listen_host"]}"',
         f'DATA_API_LISTEN_PORT = {int(data_api["listen_port"])}',
         "",
@@ -87,18 +89,42 @@ def render_python(paths: dict, data_api: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
+def main() -> int:
     data = parse_yaml(YAML_PATH.read_text(encoding="utf-8"))
     paths = data["paths"]
     data_api = data["data_api"]
+    outputs = {
+        BASH_OUT: render_bash(paths),
+        PY_OUT: render_python(paths, data_api),
+    }
 
-    BASH_OUT.parent.mkdir(parents=True, exist_ok=True)
-    PY_OUT.parent.mkdir(parents=True, exist_ok=True)
-    BASH_OUT.write_text(render_bash(paths), encoding="utf-8")
-    PY_OUT.write_text(render_python(paths, data_api), encoding="utf-8")
-    print(f"generated: {BASH_OUT}")
-    print(f"generated: {PY_OUT}")
+    if "--check" in sys.argv[1:]:
+        mismatches = []
+        for output_path, expected in outputs.items():
+            try:
+                actual = output_path.read_text(encoding="utf-8")
+            except OSError:
+                actual = ""
+            if actual != expected:
+                mismatches.append(output_path)
+        if mismatches:
+            for output_path in mismatches:
+                print(f"需要重新生成: {output_path}", file=sys.stderr)
+            return 1
+        print("生成文件均为最新状态")
+        return 0
+
+    unknown_args = [argument for argument in sys.argv[1:] if argument != "--check"]
+    if unknown_args:
+        print(f"未知参数: {' '.join(unknown_args)}", file=sys.stderr)
+        return 2
+
+    for output_path, content in outputs.items():
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding="utf-8")
+        print(f"已生成: {output_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

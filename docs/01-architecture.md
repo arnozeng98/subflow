@@ -1,67 +1,66 @@
-# 01 · Architecture
+# 01 · 架构
 
-subflow is split into two cooperating services with a strict responsibility
-boundary.
+subflow 由两个相互协作且职责边界严格的服务组成。
 
-## Components
+## 组件
 
-### VPS data API (`vps/subflow`)
+### VPS 数据 API (`vps/subflow`)
 
-A small Python (stdlib-only) HTTP service that runs next to the bundled
-sing-box manager (vendored under `vps/singbox`). It:
+这是一个仅使用 Python 标准库的轻量 HTTP 服务，与内置的 sing-box 管理器
+（位于 `vps/singbox`）运行在同一台机器上。它会：
 
-- reads the sing-box files (`config.json`, `user-manager.json`, `meta.json`),
-- authenticates every request with a Bearer token,
-- returns, for one username, a **raw JSON slice** of just that user's inbounds
-  plus the Reality metadata and the public IP / WebSocket domains.
+- 读取 sing-box 文件（`config.json`、`user-manager.json`、`meta.json`）；
+- 使用 Bearer token 对每个请求进行身份验证，包括 `/healthz`；
+- 针对单个用户名返回该用户客户端连接数据的**字段白名单 JSON 安全投影**，其中包含
+  `schema_version=1`、Reality 公钥元数据以及公网 IP 和 WebSocket 域名。
 
-It performs **no** protocol rendering and never returns other users' secrets.
+它**不进行**任何协议渲染，也绝不返回服务器私钥或其他用户的密钥。
 
-### Cloudflare Pages gateway (`cloudflare/functions/`)
+### Cloudflare Pages 网关 (`cloudflare/functions/`)
 
-A Pages Function that:
+这是一个 Pages Function，它会：
 
-- validates the username from the URL path,
-- fetches the raw payload from the VPS,
-- normalizes nodes and detects protocols,
-- negotiates the output format (query string → User-Agent → default),
-- **generates the full client configuration** and returns it.
+- 验证 URL 路径中的用户名；
+- 从 VPS 获取原始载荷；
+- 规范化节点并检测协议；
+- 协商输出格式（查询字符串 → User-Agent → 默认值）；
+- **生成完整的客户端配置**并返回，同时默认设置 `Cache-Control: no-store`。
 
-All assembly logic lives here, in modular files under `cloudflare/functions/_lib/`.
+所有组装逻辑都位于此处，即 `cloudflare/functions/_lib/` 下的模块化文件中。
 
-## Data flow
+## 数据流
 
 ```mermaid
 flowchart LR
-    A[Client app] -->|GET /username?format=clash| B[Cloudflare Pages]
-    B -->|Bearer + GET /internal/raw/username| C[VPS data API]
-    C -->|reads| D[(sing-box config.json\nuser-manager.json\nmeta.json)]
-    C -->|raw JSON: inbounds, meta,\npublic_ip, ws_domains, usage| B
-    B -->|references rules| E[(Official rule sources\nLoyalsoldier / SagerNet / blackmatrix7)]
-    B -->|complete config| A
+    A[客户端应用] -->|GET /username?format=clash| B[Cloudflare Pages]
+    B -->|Bearer + GET /internal/raw/username| C[VPS 数据 API]
+    C -->|读取| D[(sing-box config.json\nuser-manager.json\nmeta.json)]
+    C -->|JSON 安全投影：schema_version=1、inbounds、meta、\npublic_ip、ws_domains、usage| B
+    B -->|引用规则| E[(官方规则源\nLoyalsoldier / SagerNet / blackmatrix7)]
+    B -->|完整配置，默认 no-store| A
 ```
 
-## Why generation lives on Cloudflare
+## 为什么在 Cloudflare 上生成配置
 
-- The VPS stays minimal: one endpoint, no template engine, no rule data.
-- Configuration logic deploys with the Pages project (fast iteration, no SSH).
-- Rules are referenced from official sources, so clients always fetch the latest
-  versions directly; subflow never re-hosts or ages rule data.
+- VPS 保持精简：只有一个数据端点，不包含模板引擎和规则数据。
+- 配置逻辑随 Pages 项目部署，迭代快速且无需 SSH。
+- 规则引用自官方数据源，因此客户端始终直接获取最新版本；subflow 从不重新托管规则数据，
+  也不会导致规则数据过时。
 
-## Module map
+## 模块索引
 
-| Concern | File |
+| 职责 | 文件 |
 | --- | --- |
-| Env resolution (single source) | [cloudflare/functions/_lib/config.js](../cloudflare/functions/_lib/config.js) |
-| Constants & official source URLs | [cloudflare/functions/_lib/constants.js](../cloudflare/functions/_lib/constants.js) |
-| VPS transport | [cloudflare/functions/_lib/raw-client.js](../cloudflare/functions/_lib/raw-client.js) |
-| Protocol detection & node model | [cloudflare/functions/_lib/protocol.js](../cloudflare/functions/_lib/protocol.js) |
-| Share-link builders | [cloudflare/functions/_lib/links.js](../cloudflare/functions/_lib/links.js) |
-| Format negotiation | [cloudflare/functions/_lib/format.js](../cloudflare/functions/_lib/format.js) |
-| Template cache fetcher | [cloudflare/functions/_lib/templates/fetcher.js](../cloudflare/functions/_lib/templates/fetcher.js) |
-| Per-platform generators | [cloudflare/functions/_lib/templates/](../cloudflare/functions/_lib/templates) |
-| VPS config | [vps/subflow/config.py](../vps/subflow/config.py) |
-| VPS raw projection | [vps/subflow/services/raw_projection.py](../vps/subflow/services/raw_projection.py) |
-| VPS HTTP handlers | [vps/subflow/http/handlers.py](../vps/subflow/http/handlers.py) |
-| Shared defaults (single YAML source) | [configs/defaults.yaml](../configs/defaults.yaml) |
-| Bundled sing-box manager | [vps/singbox/](../vps/singbox) |
+| 环境变量解析（唯一数据源） | [cloudflare/functions/_lib/config.js](../cloudflare/functions/_lib/config.js) |
+| 常量和官方数据源 URL | [cloudflare/functions/_lib/constants.js](../cloudflare/functions/_lib/constants.js) |
+| VPS 传输 | [cloudflare/functions/_lib/raw-client.js](../cloudflare/functions/_lib/raw-client.js) |
+| 协议检测和节点模型 | [cloudflare/functions/_lib/protocol.js](../cloudflare/functions/_lib/protocol.js) |
+| 分享链接构建器 | [cloudflare/functions/_lib/links.js](../cloudflare/functions/_lib/links.js) |
+| 格式协商 | [cloudflare/functions/_lib/format.js](../cloudflare/functions/_lib/format.js) |
+| 模板缓存获取器 | [cloudflare/functions/_lib/templates/fetcher.js](../cloudflare/functions/_lib/templates/fetcher.js) |
+| 各平台生成器 | [cloudflare/functions/_lib/templates/](../cloudflare/functions/_lib/templates) |
+| VPS 配置 | [vps/subflow/config.py](../vps/subflow/config.py) |
+| VPS 原始数据投影 | [vps/subflow/services/raw_projection.py](../vps/subflow/services/raw_projection.py) |
+| VPS HTTP 处理器 | [vps/subflow/http/handlers.py](../vps/subflow/http/handlers.py) |
+| 共享默认值（唯一 YAML 数据源） | [configs/defaults.yaml](../configs/defaults.yaml) |
+| 内置 sing-box 管理器 | [vps/singbox/](../vps/singbox) |

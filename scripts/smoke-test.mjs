@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+
 import { buildNodes } from "../cloudflare/functions/_lib/protocol.js";
 import { resolveConfig } from "../cloudflare/functions/_lib/config.js";
 import { generate } from "../cloudflare/functions/_lib/templates/index.js";
@@ -51,19 +53,22 @@ const config = resolveConfig(env);
 
 const nodes = buildNodes(raw);
 console.log("NODES:", nodes.length);
-console.assert(nodes.length === 4, "expected 4 nodes");
+assert.equal(nodes.length, 4, "应生成 4 个节点");
 
 const ss = nodes.find((n) => n.protocol === "shadowsocks");
-console.assert(ss.password === "SERVERPW:USERPW", "ss2022 password should be server:user, got " + ss.password);
-console.assert(ss.server === "203.0.113.10", "server should be public ip");
+assert.ok(ss, "应生成 Shadowsocks 节点");
+assert.equal(ss.password, "SERVERPW:USERPW", "SS2022 密码应为服务端密码:用户密码");
+assert.equal(ss.server, "203.0.113.10", "节点地址应使用公网 IP");
 
 const vmess = nodes.find((n) => n.protocol === "vmess-ws");
-console.assert(vmess.wsPathWithEarlyData === "/wspath?ed=2048", "ws path early data, got " + vmess.wsPathWithEarlyData);
-console.assert(vmess.wsHost === "vm.example.com", "ws host from domain, got " + vmess.wsHost);
+assert.ok(vmess, "应生成 VMess-WS 节点");
+assert.equal(vmess.wsPathWithEarlyData, "/wspath?ed=2048", "WS 路径应包含 early data 参数");
+assert.equal(vmess.wsHost, "vm.example.com", "WS Host 应使用配置域名");
 
 const reality = nodes.find((n) => n.protocol === "vless-reality");
-console.assert(reality.realityPublicKey === "PBKEY123", "reality pbk from meta");
-console.assert(reality.name === "tokyo", "node name should hide username, got " + reality.name);
+assert.ok(reality, "应生成 VLESS Reality 节点");
+assert.equal(reality.realityPublicKey, "PBKEY123", "Reality 公钥应来自元数据");
+assert.equal(reality.name, "tokyo", "节点名称不应包含业务用户名");
 
 for (const fmt of ["clash", "singbox", "surge", "quantumultx", "shadowrocket", "universal"]) {
 	const { contentType, body } = await generate(fmt, nodes, config, raw);
@@ -71,7 +76,7 @@ for (const fmt of ["clash", "singbox", "surge", "quantumultx", "shadowrocket", "
 	console.log(body.slice(0, 400));
 	if (fmt === "singbox") {
 		JSON.parse(body);
-		console.log("singbox JSON valid");
+		console.log("sing-box JSON 有效");
 	}
 }
-console.log("\nALL CHECKS DONE");
+console.log("\n所有检查完成");

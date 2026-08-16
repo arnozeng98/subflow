@@ -56,8 +56,8 @@ function parseExpireSeconds(expireAt) {
 /**
  * 从上游的使用量记录构建一个 `Subscription-Userinfo` 响应头的值。
  *
- * @param {object} [usage] Usage record from the VPS payload.
- * @returns {string} The header value, or "" when no quota/expiry is configured.
+ * @param {object} [usage] VPS 负载中的使用量记录。
+ * @returns {string} 响应头的值；未配置配额或到期时间时为 ""。
  */
 export function buildSubscriptionUserinfo(usage) {
 	if (!usage) {

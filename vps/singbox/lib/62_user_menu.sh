@@ -673,14 +673,12 @@ user_manager_menu() {
     echo -e "  ${C}1.${NC} 新增用户"
     echo -e "  ${C}2.${NC} 管理用户"
     echo -e "  ${C}3.${NC} 删除用户"
-    echo -e "  ${C}4.${NC} Telegram Bot 管理"
     echo -e "  ${R}0.${NC} 返回主菜单"
     read -r -p "请选择操作: " act
     case "${act:-}" in
       1) user_add_menu || true ;;
       2) user_select_and_manage_menu || true ;;
       3) user_delete_menu || true ;;
-      4) telegram_bot_manager_menu || true ;;
       0|q|Q|"") return 0 ;;
       *) warn "无效输入：$act"; sleep 1 ;;
     esac

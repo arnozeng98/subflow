@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# subflow Cloudflare Pages auto-deploy (Direct Upload)
+# subflow Cloudflare Pages 自动部署（直接上传）
 # ============================================================
-# Optional, fully automated Cloudflare deployment. It uses Wrangler "Direct
-# Upload" so it needs ONLY a Cloudflare API Token + Account ID. It does NOT need
-# you to fork the repo and does NOT need a GitHub token — the Pages assets
-# (functions/) are uploaded directly from the copy already on this machine.
+# 可选的全自动 Cloudflare 部署。它使用 Wrangler“直接上传”，因此只需要
+# Cloudflare API 令牌和账户 ID。无需复刻仓库，也无需 GitHub 令牌；Pages 资源
+#（functions/）会直接从本机已有的副本上传。
 #
-# Steps performed (each explained inline as it runs):
-#   1. collect Cloudflare credentials + your domain names (with explanations)
-#   2. verify the token and resolve the zone id from your root domain
-#   3. create the Pages project (if missing) and upload functions/
-#   4. set the VPS_API_BASE_URL + VPS_API_BEARER_TOKEN secrets
-#   5. create the api.<sub> DNS record pointing at this VPS
-#   6. attach the subscription custom domain to the Pages project
-#   7. print the final subscription URL
+# 执行步骤（运行时会逐项说明）：
+#   1. 收集 Cloudflare 凭据和域名（附说明）
+#   2. 验证令牌，并根据根域名解析区域 ID
+#   3. 创建 Pages 项目（如果不存在）并上传 functions/
+#   4. 设置 VPS_API_BASE_URL 和 VPS_API_BEARER_TOKEN 机密
+#   5. 创建指向此 VPS 的 api.<sub> DNS 记录
+#   6. 将订阅自定义域绑定到 Pages 项目
+#   7. 打印最终订阅 URL
 #
-# Can be run standalone, from install.sh, or via `sf` → Cloudflare 部署.
+# 可独立运行、从 install.sh 运行，或通过 `sf` → Cloudflare 部署运行。
 # ============================================================
 
 set -Eeuo pipefail
@@ -26,10 +25,12 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURC
 SCRIPT_DIR="$(cd -- "$(dirname -- "${SELF}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/lib.sh"
+# shellcheck source=dependencies.sh
+source "${SCRIPT_DIR}/dependencies.sh"
 
-# ----- Locate the Pages assets (functions/) ----------------------------------
+# ----- 定位 Pages 资源（functions/）-------------------------------------------
 resolve_pages_dir() {
-  # Prefer the installed copy; fall back to a repo checkout next to this script.
+  # 优先使用已安装的副本；否则使用此脚本旁的仓库检出目录。
   if [[ -d "${PAGES_ROOT}/functions" ]]; then
     PAGES_DIR="${PAGES_ROOT}"
     return 0
@@ -44,30 +45,75 @@ resolve_pages_dir() {
   exit 1
 }
 
-# ----- Tooling prerequisites -------------------------------------------------
+# ----- 工具先决条件 -----------------------------------------------------------
+node_major_version() {
+  local version
+  version="$(node --version 2>/dev/null || true)"
+  version="${version#v}"
+  version="${version%%.*}"
+  [[ "${version}" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "${version}"
+}
+
+node_npx_supported() {
+  command -v node >/dev/null 2>&1 || return 1
+  command -v npm >/dev/null 2>&1 || return 1
+  command -v npx >/dev/null 2>&1 || return 1
+  local major
+  major="$(node_major_version)" || return 1
+  (( major >= WRANGLER_NODE_MIN_MAJOR ))
+}
+
 require_node_npx() {
-  if command -v npx >/dev/null 2>&1; then
+  if node_npx_supported; then
     return 0
   fi
-  warn "未检测到 Node.js / npx（Wrangler 直传需要 Node 18+）。"
-  printf '%b\n' "    ${C_GREY}Debian/Ubuntu 可执行： curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs${C_RESET}"
-  printf '%b' "  ${C_PINK}现在尝试自动安装 Node 20？[y/N]${C_RESET}: "
+
+  local current="未安装" package_manager
+  if command -v node >/dev/null 2>&1; then
+    current="$(node --version 2>/dev/null || printf '无法识别')"
+  fi
+  warn "Wrangler ${WRANGLER_VERSION} 需要 Node ${WRANGLER_NODE_MIN_MAJOR}+ 及 npm/npx（当前：${current}）。"
+  printf '%b' "  ${C_PINK}是否通过系统包管理器安装/更新 nodejs 与 npm？[y/N]${C_RESET}: "
   local c; read -r c || c="n"
-  if [[ "${c}" =~ ^[yY] ]]; then
-    if command -v apt-get >/dev/null 2>&1; then
-      curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
-    else
-      err "无法自动安装（未找到 apt-get）。请手动安装 Node 18+ 后重试。"
-      exit 1
-    fi
-  else
-    err "已取消。请安装 Node 18+ 后重试，或在本地机器手动部署。"
+  if [[ ! "${c}" =~ ^[yY] ]]; then
+    err "已取消。请通过可信的软件源安装 Node ${WRANGLER_NODE_MIN_MAJOR}+ 与 npm 后重试。"
+    exit 1
+  fi
+
+  package_manager="$(detect_package_manager 2>/dev/null || true)"
+  if [[ -z "${package_manager}" ]]; then
+    err "无法识别系统包管理器，请手动安装 Node ${WRANGLER_NODE_MIN_MAJOR}+ 与 npm。"
+    exit 1
+  fi
+  if ! install_packages "${package_manager}" nodejs npm; then
+    err "通过 ${package_manager} 安装 nodejs/npm 失败。"
+    exit 1
+  fi
+
+  if ! node_npx_supported; then
+    current="$(node --version 2>/dev/null || printf '未安装')"
+    err "系统软件源提供的 Node 版本不满足要求（当前：${current}，要求：${WRANGLER_NODE_MIN_MAJOR}+）。"
+    err "请改用该发行版可信的软件源安装新版 Node 后重试；脚本不会执行远程 shell 安装器。"
     exit 1
   fi
 }
 
-# ----- Prompt helpers --------------------------------------------------------
-# ask VAR "label" "explanation" "default" "secret(yes/no)"
+verify_wrangler_package() {
+  local actual_integrity
+  actual_integrity="$(npm view "wrangler@${WRANGLER_VERSION}" dist.integrity --json 2>/dev/null | tr -d '\r\n\"' || true)"
+  if [[ -z "${actual_integrity}" ]]; then
+    err "未能读取 Wrangler ${WRANGLER_VERSION} 的 npm 完整性信息。"
+    return 1
+  fi
+  if [[ "${actual_integrity}" != "${WRANGLER_INTEGRITY}" ]]; then
+    err "Wrangler ${WRANGLER_VERSION} 的 npm integrity 与项目锁定值不一致，已停止部署。"
+    return 1
+  fi
+}
+
+# ----- 提示辅助函数 -----------------------------------------------------------
+# ask VAR "标签" "说明" "默认值" "机密(yes/no)"
 ask() {
   local __var="$1" label="$2" explain="$3" def="${4:-}" secret="${5:-no}"
   printf '%b\n' ""
@@ -96,27 +142,27 @@ ask() {
   done
 }
 
-# ----- Main wizard -----------------------------------------------------------
+# ----- 主向导 ----------------------------------------------------------------
 collect_inputs() {
   printf '%b\n' ""
-  step "Cloudflare 自动部署向导（直传 + Cloudflare Tunnel，无需 fork / GitHub Token）"
-  printf '%b\n' "  ${C_GREY}需要一个 Cloudflare API Token，共 4 项权限："
-  printf '%b\n' "  ${C_GREY}  • Account → Cloudflare Pages → Edit"
-  printf '%b\n' "  ${C_GREY}  • Account → Cloudflare Tunnel → Edit"
-  printf '%b\n' "  ${C_GREY}  • Zone → DNS → Edit"
-  printf '%b\n' "  ${C_GREY}  • Zone → Zone → Read"
-  printf '%b\n' "  ${C_GREY}Token 仅运行时使用，不会写入磁盘。${C_RESET}"
+  step "Cloudflare 自动部署向导（直传 + Cloudflare Tunnel，无需复刻仓库或 GitHub 令牌）"
+  printf '%b\n' "  ${C_GREY}需要一个 Cloudflare API 令牌，共 4 项权限："
+  printf '%b\n' "  ${C_GREY}  • 账户 → Cloudflare Pages → 编辑"
+  printf '%b\n' "  ${C_GREY}  • 账户 → Cloudflare Tunnel → 编辑"
+  printf '%b\n' "  ${C_GREY}  • 区域 → DNS → 编辑"
+  printf '%b\n' "  ${C_GREY}  • 区域 → 区域 → 读取"
+  printf '%b\n' "  ${C_GREY}令牌仅运行时使用，不会写入磁盘。${C_RESET}"
 
-  ask CF_TOKEN "Cloudflare API Token" \
-    "在 dash.cloudflare.com → 右上头像 → My Profile → API Tokens → Create Token 创建。" \
+  ask CF_TOKEN "Cloudflare API 令牌" \
+    "在 dash.cloudflare.com → 右上头像 → 我的个人资料 → API 令牌 → 创建令牌 中创建。" \
     "" "yes"
 
-  ask CF_ACCOUNT_ID "Cloudflare Account ID" \
-    "在任意域名的 Overview 页右侧 API 区域可见，是一串 32 位十六进制。" \
+  ask CF_ACCOUNT_ID "Cloudflare 账户 ID" \
+    "在任意域名的概览页右侧 API 区域可见，是一串 32 位十六进制。" \
     ""
 
-  ask ROOT_DOMAIN "根域名 (Zone)" \
-    "你已托管在 Cloudflare 的主域名，例如 example.com。脚本会据此自动查 Zone ID。" \
+  ask ROOT_DOMAIN "根域名 (区域)" \
+    "你已托管在 Cloudflare 的主域名，例如 example.com。脚本会据此自动查区域 ID。" \
     ""
 
   ask SUB_HOST "订阅子域 (面向用户)" \
@@ -131,21 +177,26 @@ collect_inputs() {
     "Cloudflare Pages 项目的名称（小写字母/数字/连字符）。" \
     "subflow"
 
-  # Token used by Cloudflare to talk to the VPS API. Reuse the installed one.
+  # Cloudflare 与 VPS API 通信所用的令牌。复用已安装的令牌。
   load_env
   CF_BEARER="${CFG_VALUE[SUBFLOW_API_TOKEN]:-}"
   if [[ -z "${CF_BEARER}" ]]; then
     CF_BEARER="$(generate_token)"
-    warn "未找到现有 VPS Token，已生成一个新的（请确保 VPS 端也使用它）。"
+    CFG_VALUE[SUBFLOW_API_TOKEN]="${CF_BEARER}"
+    save_env
+    if is_installed; then
+      reload_and_restart
+    fi
+    ok "未找到现有 VPS 令牌，已生成并写入数据 API 配置。"
   fi
-  # Local origin the tunnel forwards to (the data API binds here).
+  # 隧道转发到的本地源站（数据 API 绑定在此处）。
   ORIGIN_URL="http://${CFG_VALUE[SUBFLOW_LISTEN_HOST]:-127.0.0.1}:${CFG_VALUE[SUBFLOW_LISTEN_PORT]:-28080}"
 }
 
 confirm_inputs() {
   printf '%b\n' ""
   printf '%b\n' "  ${C_CYAN}${C_BOLD}请确认 Cloudflare 部署配置${C_RESET}"
-  printf '%b\n' "    ${C_GREY}Account ID${C_RESET}   = ${C_LAV}${CF_ACCOUNT_ID}${C_RESET}"
+  printf '%b\n' "    ${C_GREY}账户 ID${C_RESET}      = ${C_LAV}${CF_ACCOUNT_ID}${C_RESET}"
   printf '%b\n' "    ${C_GREY}根域名${C_RESET}       = ${C_LAV}${ROOT_DOMAIN}${C_RESET}"
   printf '%b\n' "    ${C_GREY}订阅子域${C_RESET}     = ${C_LAV}${SUB_HOST}${C_RESET}  ${C_GREY}(Pages)${C_RESET}"
   printf '%b\n' "    ${C_GREY}API 子域${C_RESET}     = ${C_LAV}${API_HOST}${C_RESET}  ${C_GREY}→ Tunnel → ${ORIGIN_URL}${C_RESET}"
@@ -157,29 +208,29 @@ confirm_inputs() {
   [[ -z "${c}" || "${c}" =~ ^[yY] ]]
 }
 
-# ----- Cloudflare operations -------------------------------------------------
+# ----- Cloudflare 操作 --------------------------------------------------------
 verify_token() {
-  step "校验 API Token…"
+  step "校验 API 令牌…"
   local resp ok_field
   resp="$(cf_api "${CF_TOKEN}" GET "/user/tokens/verify")"
   ok_field="$(json_get "${resp}" "d.get('success')")"
   if [[ "${ok_field}" != "True" ]]; then
-    err "Token 校验失败，请检查权限/有效性。"
+    err "令牌校验失败，请检查权限/有效性。"
     exit 1
   fi
-  ok "Token 有效。"
+  ok "令牌有效。"
 }
 
 resolve_zone() {
-  step "查询 Zone ID（${ROOT_DOMAIN}）…"
+  step "查询区域 ID（${ROOT_DOMAIN}）…"
   local resp
   resp="$(cf_api "${CF_TOKEN}" GET "/zones?name=${ROOT_DOMAIN}")"
   ZONE_ID="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
   if [[ -z "${ZONE_ID}" ]]; then
-    err "未找到 Zone：${ROOT_DOMAIN}。请确认该域名已托管在此 Cloudflare 账户。"
+    err "未找到区域：${ROOT_DOMAIN}。请确认该域名已托管在此 Cloudflare 账户。"
     exit 1
   fi
-  ok "Zone ID: ${ZONE_ID}"
+  ok "区域 ID: ${ZONE_ID}"
 }
 
 ensure_project() {
@@ -204,26 +255,26 @@ ensure_project() {
 }
 
 deploy_assets() {
-  step "上传 Pages 资源（functions/）via Wrangler 直传…"
-  # Isolate wrangler's config dir to a throwaway location. A pre-existing
-  # ~/.config/.wrangler (e.g. a stale OAuth login from earlier wrangler use)
-  # can take precedence over CLOUDFLARE_API_TOKEN and cause auth code 10001
-  # even when the token itself is valid. A clean XDG_CONFIG_HOME forces
-  # wrangler to fall back to the env token we pass in. Also drop any legacy
-  # CLOUDFLARE_API_KEY/EMAIL so they cannot shadow the token.
+  step "通过 Wrangler 直接上传 Pages 资源（functions/）…"
+  # 将 Wrangler 的配置目录隔离到临时位置。预先存在的 ~/.config/.wrangler
+  #（例如之前使用 Wrangler 时遗留的 OAuth 登录）可能优先于 CLOUDFLARE_API_TOKEN，
+  # 即使令牌本身有效也会导致身份验证代码 10001。干净的 XDG_CONFIG_HOME 会强制
+  # Wrangler 回退到传入的环境变量令牌。同时移除所有旧版
+  # CLOUDFLARE_API_KEY/EMAIL，以免它们遮蔽该令牌。
   local cfg_home rc=0
+  verify_wrangler_package || exit 1
   cfg_home="$(mktemp -d)"
   ( cd "${PAGES_DIR}" && \
     env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_EMAIL \
       CLOUDFLARE_API_TOKEN="${CF_TOKEN}" CLOUDFLARE_ACCOUNT_ID="${CF_ACCOUNT_ID}" \
       XDG_CONFIG_HOME="${cfg_home}" \
-      npx --yes wrangler@4 pages deploy \
+      npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy \
         --project-name "${PROJECT_NAME}" \
         --branch main \
         --commit-dirty=true ) || rc=$?
   rm -rf "${cfg_home}"
   if [[ "${rc}" -ne 0 ]]; then
-    err "Pages 资源上传失败（wrangler 退出码 ${rc}）。请确认 Token 含 Cloudflare Pages → Edit 后重跑 sf deploy。"
+    err "Pages 资源上传失败（wrangler 退出码 ${rc}）。请确认令牌含 Cloudflare Pages → 编辑权限后重跑 sf deploy。"
     exit 1
   fi
   ok "部署完成。"
@@ -231,12 +282,11 @@ deploy_assets() {
 
 set_secrets() {
   step "写入 Pages 机密（VPS_API_BASE_URL / VPS_API_BEARER_TOKEN）…"
-  # Set secrets via the REST API instead of `wrangler pages secret put`.
-  # The REST path uses the same Bearer token that already authenticates here,
-  # avoiding wrangler's credential-resolution quirks (auth code 10001). The
-  # values are written as encrypted project-level production env vars, which
-  # the subsequent deploy inherits. Missing secrets make the live site return
-  # 500 ("Service unavailable"), so surface a warning instead of failing hard.
+  # 通过 REST API 设置机密，而不使用 `wrangler pages secret put`。
+  # REST 路径使用已在此处完成身份验证的同一 Bearer 令牌，避免 Wrangler 的
+  # 凭据解析异常（身份验证代码 10001）。这些值会写为加密的项目级生产环境变量，
+  # 后续部署会继承它们。缺少机密会使线上站点返回 500（“服务不可用”），
+  # 因此显示警告，而不是直接失败。
   local body resp
   body="$(python3 -c 'import json,sys
 print(json.dumps({"deployment_configs":{"production":{"env_vars":{
@@ -247,65 +297,84 @@ print(json.dumps({"deployment_configs":{"production":{"env_vars":{
   if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
     ok "已设置 VPS_API_BASE_URL 与 VPS_API_BEARER_TOKEN。"
   else
-    warn "机密写入可能失败：$(json_get "${resp}" "d.get('errors')")。若站点返回 Service unavailable，请检查 Token 权限后重跑 sf deploy。"
+    warn "机密写入可能失败：$(json_get "${resp}" "d.get('errors')")。若站点返回服务不可用，请检查令牌权限后重跑 sf deploy。"
   fi
 }
 
-# ----- Cloudflare Tunnel (exposes the localhost API without opening ports) ----
-# The data API binds to 127.0.0.1 only. The VPS likely already uses :443 for the
-# sing-box node, so a reverse proxy is not an option. cloudflared dials OUT to
-# Cloudflare, so no inbound port is opened and the node's :443 is untouched.
+# ----- Cloudflare Tunnel（无需开放端口即可公开本地主机 API）-------------------
+# 数据 API 仅绑定到 127.0.0.1。VPS 很可能已将 :443 用于 sing-box 节点，
+# 因此不能使用反向代理。cloudflared 会向外连接 Cloudflare，所以不会开放
+# 任何入站端口，也不会影响节点的 :443。
 
 ensure_cloudflared() {
   if command -v cloudflared >/dev/null 2>&1; then
-    ok "cloudflared 已安装。"
-    return 0
+    if cloudflared --version 2>/dev/null | grep -Fq "${CLOUDFLARED_VERSION}"; then
+      ok "cloudflared ${CLOUDFLARED_VERSION} 已安装。"
+      return 0
+    fi
+    warn "检测到其他版本的 cloudflared，将替换为项目锁定版本 ${CLOUDFLARED_VERSION}。"
   fi
   step "安装 cloudflared…"
-  local arch deb_arch
+  local arch asset_arch expected_sha actual_sha download_url tmp_file staged_file
   arch="$(uname -m)"
   case "${arch}" in
-    x86_64|amd64) deb_arch="amd64" ;;
-    aarch64|arm64) deb_arch="arm64" ;;
-    armv7l|armhf) deb_arch="arm" ;;
-    *) deb_arch="" ;;
+    x86_64|amd64) asset_arch="amd64" ;;
+    aarch64|arm64) asset_arch="arm64" ;;
+    armv7l|armhf) asset_arch="arm" ;;
+    *) asset_arch="" ;;
   esac
-  if [[ -z "${deb_arch}" ]]; then
+  if [[ -z "${asset_arch}" ]]; then
     err "未知 CPU 架构 ${arch}，请手动安装 cloudflared 后重试。"
     exit 1
   fi
-  local base="https://github.com/cloudflare/cloudflared/releases/latest/download"
-  # Prefer the .deb (apt keeps it updated), but never let a failed download abort
-  # the whole script under `set -e`; fall back to the static binary, then verify
-  # the result actually runs before continuing.
-  if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
-    local deb="/tmp/cloudflared-${deb_arch}.deb"
-    if curl -fsSL --retry 3 "${base}/cloudflared-linux-${deb_arch}.deb" -o "${deb}" 2>/dev/null; then
-      dpkg -i "${deb}" >/dev/null 2>&1 || apt-get -f install -y >/dev/null 2>&1 || true
-      rm -f "${deb}"
-    fi
-  fi
-  if ! command -v cloudflared >/dev/null 2>&1; then
-    # Fallback: drop the static binary in place. Clean up a partial file so a
-    # half-written binary is never left behind on a flaky connection.
-    if ! curl -fsSL --retry 3 "${base}/cloudflared-linux-${deb_arch}" -o /usr/local/bin/cloudflared 2>/dev/null; then
-      rm -f /usr/local/bin/cloudflared
-      err "cloudflared 下载失败（无法连接 GitHub）。请检查 VPS 网络或手动安装后重跑 sf deploy。"
-      exit 1
-    fi
-    chmod +x /usr/local/bin/cloudflared
-  fi
-  if cloudflared --version >/dev/null 2>&1; then
-    ok "cloudflared 安装完成（$(cloudflared --version 2>/dev/null | head -n1)）。"
-  else
-    err "cloudflared 已下载但无法运行（架构 ${arch} 不匹配？）。请手动安装后重跑 sf deploy。"
+
+  expected_sha="${CLOUDFLARED_SHA256[$asset_arch]}"
+  download_url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${asset_arch}"
+  tmp_file="$(mktemp /tmp/cloudflared.XXXXXX)" || {
+    err "无法创建 cloudflared 临时文件。"
+    exit 1
+  }
+  if ! curl -fsSL --retry 3 "${download_url}" -o "${tmp_file}" 2>/dev/null; then
+    rm -f "${tmp_file}"
+    err "cloudflared ${CLOUDFLARED_VERSION} 下载失败，请检查 VPS 网络后重试。"
     exit 1
   fi
+
+  actual_sha="$(sha256sum "${tmp_file}" | awk '{print $1}')"
+  if [[ "${actual_sha}" != "${expected_sha}" ]]; then
+    rm -f "${tmp_file}"
+    err "cloudflared SHA256 校验失败，已停止安装。"
+    exit 1
+  fi
+
+  chmod 755 "${tmp_file}"
+  if ! "${tmp_file}" --version 2>/dev/null | grep -Fq "${CLOUDFLARED_VERSION}"; then
+    rm -f "${tmp_file}"
+    err "cloudflared 二进制无法运行或版本信息不匹配。"
+    exit 1
+  fi
+
+  mkdir -p /usr/local/bin
+  staged_file="/usr/local/bin/.cloudflared.$$"
+  if ! install -m 755 "${tmp_file}" "${staged_file}"; then
+    rm -f "${tmp_file}" "${staged_file}"
+    err "无法暂存 cloudflared 到 /usr/local/bin。"
+    exit 1
+  fi
+  rm -f "${tmp_file}"
+  mv -f "${staged_file}" /usr/local/bin/cloudflared
+  hash -r 2>/dev/null || true
+
+  if ! /usr/local/bin/cloudflared --version 2>/dev/null | grep -Fq "${CLOUDFLARED_VERSION}"; then
+    err "cloudflared 安装后验证失败。"
+    exit 1
+  fi
+  ok "cloudflared ${CLOUDFLARED_VERSION} 安装完成。"
 }
 
 ensure_tunnel() {
   step "创建/复用 Cloudflare Tunnel（${PROJECT_NAME}）…"
-  # Reuse an existing tunnel by name if present (not deleted).
+  # 如果存在同名且未删除的隧道，则复用它。
   local resp
   resp="$(cf_api "${CF_TOKEN}" GET "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel?name=${PROJECT_NAME}&is_deleted=false")"
   TUNNEL_ID="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
@@ -316,7 +385,7 @@ ensure_tunnel() {
     TUNNEL_ID="$(json_get "${resp}" "d['result'].get('id','') if d.get('result') else ''")"
   fi
   if [[ -z "${TUNNEL_ID}" ]]; then
-    err "创建 Tunnel 失败：$(json_get "${resp}" "d.get('errors')")（请确认 Token 含 Account → Cloudflare Tunnel → Edit）。"
+    err "创建 Tunnel 失败：$(json_get "${resp}" "d.get('errors')")（请确认令牌含账户 → Cloudflare Tunnel → 编辑权限）。"
     exit 1
   fi
   ok "Tunnel ID: ${TUNNEL_ID}"
@@ -335,44 +404,181 @@ configure_tunnel() {
   fi
 }
 
+write_tunnel_token_file() {
+  local token="$1" tmp_file
+  mkdir -p "${ENV_DIR}"
+  chmod 700 "${ENV_DIR}"
+  tmp_file="$(mktemp "${SUBFLOW_CLOUDFLARED_TOKEN_FILE}.tmp.XXXXXX")" || return 1
+  if ! printf '%s\n' "${token}" > "${tmp_file}"; then
+    rm -f "${tmp_file}"
+    return 1
+  fi
+  chmod 600 "${tmp_file}"
+  mv -f "${tmp_file}" "${SUBFLOW_CLOUDFLARED_TOKEN_FILE}"
+  chmod 600 "${SUBFLOW_CLOUDFLARED_TOKEN_FILE}"
+}
+
+detect_deploy_init_system() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+    printf 'systemd'
+  elif command -v rc-service >/dev/null 2>&1 && command -v rc-update >/dev/null 2>&1; then
+    printf 'openrc'
+  else
+    printf 'unknown'
+  fi
+}
+
+install_tunnel_systemd_service() {
+  local cloudflared_bin="$1"
+  cat > "${SUBFLOW_CLOUDFLARED_SYSTEMD_UNIT}" <<EOF_UNIT
+[Unit]
+Description=subflow Cloudflare Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${cloudflared_bin} tunnel run --token-file ${SUBFLOW_CLOUDFLARED_TOKEN_FILE}
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
+EOF_UNIT
+  chmod 644 "${SUBFLOW_CLOUDFLARED_SYSTEMD_UNIT}"
+  systemctl daemon-reload
+  systemctl enable "${SUBFLOW_CLOUDFLARED_SERVICE}" >/dev/null 2>&1
+  systemctl restart "${SUBFLOW_CLOUDFLARED_SERVICE}"
+  systemctl is-active --quiet "${SUBFLOW_CLOUDFLARED_SERVICE}"
+}
+
+install_tunnel_openrc_service() {
+  local cloudflared_bin="$1"
+  cat > "${SUBFLOW_CLOUDFLARED_OPENRC_SERVICE}" <<EOF_OPENRC
+#!/sbin/openrc-run
+description="subflow Cloudflare Tunnel"
+command="${cloudflared_bin}"
+command_args="tunnel run --token-file ${SUBFLOW_CLOUDFLARED_TOKEN_FILE}"
+command_background=true
+pidfile="/run/${SUBFLOW_CLOUDFLARED_SERVICE}.pid"
+
+depend() {
+  need net
+  after firewall
+}
+EOF_OPENRC
+  chmod 755 "${SUBFLOW_CLOUDFLARED_OPENRC_SERVICE}"
+  rc-update add "${SUBFLOW_CLOUDFLARED_SERVICE}" default >/dev/null 2>&1 || true
+  if rc-service "${SUBFLOW_CLOUDFLARED_SERVICE}" status >/dev/null 2>&1; then
+    rc-service "${SUBFLOW_CLOUDFLARED_SERVICE}" restart
+  else
+    rc-service "${SUBFLOW_CLOUDFLARED_SERVICE}" start
+  fi
+  rc-service "${SUBFLOW_CLOUDFLARED_SERVICE}" status >/dev/null 2>&1
+}
+
 install_tunnel_service() {
-  step "安装并启动 cloudflared 系统服务…"
-  local resp token
+  step "安装并启动 subflow 专属 cloudflared 服务…"
+  local resp token init_system cloudflared_bin
   resp="$(cf_api "${CF_TOKEN}" GET "/accounts/${CF_ACCOUNT_ID}/cfd_tunnel/${TUNNEL_ID}/token")"
   token="$(json_get "${resp}" "d.get('result','')")"
   if [[ -z "${token}" ]]; then
-    err "获取 Tunnel 运行 Token 失败：$(json_get "${resp}" "d.get('errors')")。"
+    err "获取 Tunnel 运行令牌失败：$(json_get "${resp}" "d.get('errors')")。"
     exit 1
   fi
-  # Idempotent: remove any previous install before reinstalling with the token.
-  cloudflared service uninstall >/dev/null 2>&1 || true
-  if cloudflared service install "${token}" >/dev/null 2>&1; then
-    systemctl enable --now cloudflared >/dev/null 2>&1 || true
-    ok "cloudflared 服务已运行（仅出站连接，未开放任何入站端口）。"
-  else
-    warn "cloudflared 服务安装可能失败，可手动运行：cloudflared service install <token>。"
+
+  if ! write_tunnel_token_file "${token}"; then
+    err "Tunnel 令牌写入失败。"
+    exit 1
   fi
+  unset token
+
+  cloudflared_bin="$(command -v cloudflared 2>/dev/null || true)"
+  if [[ -z "${cloudflared_bin}" ]]; then
+    err "未找到 cloudflared 可执行文件。"
+    exit 1
+  fi
+  init_system="$(detect_deploy_init_system)"
+  case "${init_system}" in
+    systemd)
+      install_tunnel_systemd_service "${cloudflared_bin}" || {
+        err "subflow-cloudflared systemd 服务启动失败。"
+        exit 1
+      }
+      ;;
+    openrc)
+      install_tunnel_openrc_service "${cloudflared_bin}" || {
+        err "subflow-cloudflared OpenRC 服务启动失败。"
+        exit 1
+      }
+      ;;
+    *)
+      err "未识别 init 系统（需要 systemd 或 OpenRC），无法安装 Tunnel 服务。"
+      exit 1
+      ;;
+  esac
+  ok "${SUBFLOW_CLOUDFLARED_SERVICE} 已运行（仅出站连接，未开放任何入站端口）。"
+}
+
+ensure_managed_cname() {
+  local record_name="$1" target="$2" label="$3"
+  local encoded_name query_response query_ok count record_id existing_type existing_target
+  local normalized_target body response
+
+  encoded_name="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${record_name}")"
+  query_response="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?name=${encoded_name}")"
+  query_ok="$(json_get "${query_response}" "d.get('success')")"
+  if [[ "${query_ok}" != "True" ]]; then
+    err "查询 ${label} DNS 记录失败：$(json_get "${query_response}" "d.get('errors')")。"
+    return 1
+  fi
+
+  count="$(json_get "${query_response}" "len(d.get('result') or [])")"
+  [[ "${count}" =~ ^[0-9]+$ ]] || count=0
+  if (( count > 1 )); then
+    err "${record_name} 存在多条同名 DNS 记录，拒绝覆盖，请先在控制面板清理冲突。"
+    return 1
+  fi
+
+  record_id="$(json_get "${query_response}" "d['result'][0].get('id','') if d.get('result') else ''")"
+  existing_type="$(json_get "${query_response}" "d['result'][0].get('type','') if d.get('result') else ''")"
+  existing_target="$(json_get "${query_response}" "d['result'][0].get('content','') if d.get('result') else ''")"
+  existing_target="${existing_target,,}"
+  existing_target="${existing_target%.}"
+  normalized_target="${target,,}"
+  normalized_target="${normalized_target%.}"
+
+  if [[ -n "${record_id}" ]] && \
+     { [[ "${existing_type}" != "CNAME" ]] || [[ "${existing_target}" != "${normalized_target}" ]]; }; then
+    err "${record_name} 已存在 ${existing_type:-未知类型} 记录，目标为 ${existing_target:-空}；拒绝覆盖为 ${target}。"
+    return 1
+  fi
+
+  body="$(python3 -c 'import json,sys; print(json.dumps({"type":"CNAME","name":sys.argv[1],"content":sys.argv[2],"proxied":True,"ttl":1}))' "${record_name}" "${target}")"
+  if [[ -n "${record_id}" ]]; then
+    response="$(cf_api "${CF_TOKEN}" PUT "/zones/${ZONE_ID}/dns_records/${record_id}" "${body}")"
+  else
+    response="$(cf_api "${CF_TOKEN}" POST "/zones/${ZONE_ID}/dns_records" "${body}")"
+  fi
+  if [[ "$(json_get "${response}" "d.get('success')")" != "True" ]]; then
+    err "设置 ${label} DNS 记录失败：$(json_get "${response}" "d.get('errors')")。"
+    return 1
+  fi
+  ok "${label} DNS 就绪（${record_name} → ${target}）。"
 }
 
 ensure_dns_api() {
   step "创建/更新 DNS：${API_HOST} → Tunnel（CNAME，橙云）…"
-  # Point the api host at the tunnel. Orange-cloud (proxied) is required so
-  # Cloudflare terminates TLS and routes through the tunnel.
-  local resp rec_id body target
+  # 将 API 主机指向隧道。必须启用橙云（代理），Cloudflare 才能终止 TLS
+  # 并通过隧道路由。
+  local target
   target="${TUNNEL_ID}.cfargotunnel.com"
-  resp="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?name=${API_HOST}")"
-  rec_id="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
-  body="$(printf '{"type":"CNAME","name":"%s","content":"%s","proxied":true,"ttl":1}' "${API_HOST}" "${target}")"
-  if [[ -n "${rec_id}" ]]; then
-    resp="$(cf_api "${CF_TOKEN}" PUT "/zones/${ZONE_ID}/dns_records/${rec_id}" "${body}")"
-  else
-    resp="$(cf_api "${CF_TOKEN}" POST "/zones/${ZONE_ID}/dns_records" "${body}")"
-  fi
-  if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
-    ok "DNS 就绪（${API_HOST} → ${target}）。"
-  else
-    warn "DNS 设置可能失败：$(json_get "${resp}" "d.get('errors')")，可在面板手动添加 CNAME ${API_HOST} → ${target}。"
-  fi
+  ensure_managed_cname "${API_HOST}" "${target}" "API" || exit 1
 }
 
 attach_domain() {
@@ -388,28 +594,14 @@ attach_domain() {
 }
 
 ensure_dns_sub() {
-  # Attaching the custom domain does NOT create the validating DNS record, so the
-  # domain stays "pending". Create/update a proxied CNAME SUB_HOST -> *.pages.dev
-  # to complete validation automatically.
+  # 绑定自定义域不会创建用于验证的 DNS 记录，因此域名会保持“待处理”状态。
+  # 创建或更新代理 CNAME SUB_HOST -> *.pages.dev，以自动完成验证。
   if [[ -z "${PROJECT_SUBDOMAIN:-}" ]]; then
     warn "未取得 Pages 子域，跳过订阅域 CNAME；请在面板手动添加 ${SUB_HOST} → <项目>.pages.dev。"
     return 0
   fi
   step "创建/更新 DNS：${SUB_HOST} → ${PROJECT_SUBDOMAIN}（CNAME，橙云）…"
-  local resp rec_id body
-  resp="$(cf_api "${CF_TOKEN}" GET "/zones/${ZONE_ID}/dns_records?name=${SUB_HOST}")"
-  rec_id="$(json_get "${resp}" "d['result'][0]['id'] if d.get('result') else ''")"
-  body="$(printf '{"type":"CNAME","name":"%s","content":"%s","proxied":true,"ttl":1}' "${SUB_HOST}" "${PROJECT_SUBDOMAIN}")"
-  if [[ -n "${rec_id}" ]]; then
-    resp="$(cf_api "${CF_TOKEN}" PUT "/zones/${ZONE_ID}/dns_records/${rec_id}" "${body}")"
-  else
-    resp="$(cf_api "${CF_TOKEN}" POST "/zones/${ZONE_ID}/dns_records" "${body}")"
-  fi
-  if [[ "$(json_get "${resp}" "d.get('success')")" == "True" ]]; then
-    ok "订阅域 CNAME 就绪，Cloudflare 将自动完成校验与签发证书。"
-  else
-    warn "订阅域 CNAME 设置可能失败：$(json_get "${resp}" "d.get('errors')")，可在面板手动添加 CNAME ${SUB_HOST} → ${PROJECT_SUBDOMAIN}。"
-  fi
+  ensure_managed_cname "${SUB_HOST}" "${PROJECT_SUBDOMAIN}" "订阅域" || exit 1
 }
 
 print_result() {
@@ -425,6 +617,7 @@ print_result() {
 
 main() {
   require_root
+  require_python3
   init_config_meta
   require_downloader
   resolve_pages_dir
@@ -441,11 +634,11 @@ main() {
   verify_token
   resolve_zone
   ensure_project
-  # Secrets must exist BEFORE the deployment that serves them, otherwise the live
-  # site returns 500 "Service unavailable" until the next deploy.
+  # 机密必须在使用它们的部署之前存在，否则线上站点会返回 500“服务不可用”，
+  # 直至下一次部署。
   set_secrets
   deploy_assets
-  # Expose the localhost API through a Cloudflare Tunnel (no inbound ports).
+  # 通过 Cloudflare Tunnel 公开本地主机 API（无入站端口）。
   ensure_cloudflared
   ensure_tunnel
   configure_tunnel

@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# subflow VPS installer (interactive)
+# subflow VPS 安装器（交互式）
 # ============================================================
-# Single-command install: `wget … && bash install.sh`. The installer walks the
-# operator through every setting at install time (public IP, token, paths, WS
-# domains, …) instead of asking them to hand-edit a file afterwards. Anything
-# skipped keeps a sensible default and can be changed later from the menu (`sf`).
+# 单命令安装：`wget … && bash install.sh`。安装器会在安装时引导操作员完成
+# 每项设置（公网 IP、令牌、路径、WS 域名等），无需之后手动编辑文件。
+# 跳过的设置会保留合理的默认值，稍后可从菜单（`sf`）中修改。
 #
-# After install, the `sf` command opens a friendly management menu.
+# 安装后，`sf` 命令会打开易用的管理菜单。
 # ============================================================
 
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# When piped straight from the web (curl | bash) the sibling lib.sh may not be
-# present locally; fall back to fetching the repo source tree first.
+# 直接从网络通过管道运行（curl | bash）时，同目录的 lib.sh 本地可能不存在；
+# 此时改为先获取仓库源码树。
 if [[ -f "${SCRIPT_DIR}/lib.sh" ]]; then
   # shellcheck source=lib.sh
   source "${SCRIPT_DIR}/lib.sh"
 else
-  printf '[subflow] bootstrapping from GitHub…\n'
+  printf '[subflow] 正在从 GitHub 引导安装…\n'
   command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || {
-    printf '[subflow] need curl or wget\n' >&2; exit 1; }
+    printf '[subflow] 需要 curl 或 wget\n' >&2; exit 1; }
   BOOT_TMP="$(mktemp -d /tmp/subflow-boot.XXXXXX)"
   BOOT_OWNER="${SUBFLOW_REPO_OWNER:-arnozeng98}"
   BOOT_NAME="${SUBFLOW_REPO_NAME:-subflow}"
@@ -39,8 +38,8 @@ else
   source "${BOOT_TMP}/${BOOT_NAME}-${BOOT_REF}/vps/deploy/lib.sh"
 fi
 
-# ----- Interactive prompts ---------------------------------------------------
-# prompt_value KEY — ask for one config key, honouring defaults and skip rules.
+# ----- 交互式提示 ------------------------------------------------------------
+# prompt_value KEY — 询问一个配置键，并遵循默认值和跳过规则。
 prompt_value() {
   local key="$1"
   local def="${CFG_VALUE[$key]}"
@@ -69,7 +68,7 @@ prompt_value() {
     if [[ -z "${reply}" ]]; then
       if [[ "${key}" == "SUBFLOW_API_TOKEN" ]]; then
         CFG_VALUE[$key]="$(generate_token)"
-        ok "已自动生成 Token。"
+        ok "已自动生成令牌。"
         return 0
       fi
       if [[ "${required}" == "yes" && -z "${def}" ]]; then
@@ -120,23 +119,23 @@ print_done() {
   printf '%b\n' ""
   printf '%b\n' "  ${C_CYAN}服务:${C_RESET} subflow.service    ${C_CYAN}监听:${C_RESET} ${CFG_VALUE[SUBFLOW_LISTEN_HOST]}:${CFG_VALUE[SUBFLOW_LISTEN_PORT]}"
   printf '%b\n' "  ${C_CYAN}环境文件:${C_RESET} ${ENV_FILE}"
-  printf '%b\n' "  ${C_CYAN}Bearer Token:${C_RESET} ${C_YELLOW}${token}${C_RESET}"
+  printf '%b\n' "  ${C_CYAN}Bearer 令牌:${C_RESET} ${C_YELLOW}${token}${C_RESET}"
   printf '%b\n' "  ${C_GREY}↑ 在 Cloudflare 配置同样的 VPS_API_BEARER_TOKEN${C_RESET}"
   if [[ -z "${CFG_VALUE[SUBFLOW_PUBLIC_IP]}" ]]; then
     printf '%b\n' ""
-    warn "SUBFLOW_PUBLIC_IP still 为空，节点暂不可用。运行 sf → 修改配置 补填后会自动重启。"
+    warn "SUBFLOW_PUBLIC_IP 仍然为空，节点暂不可用。运行 sf → 修改配置 补填后会自动重启。"
   fi
   printf '%b\n' ""
   step "随时输入 ${C_BOLD}sf${C_RESET}${C_PINK} 呼出管理菜单 (查看状态/修改配置/开关/卸载) ♡${C_RESET}"
   step "管理 sing-box（安装/协议/用户/节点）请输入 ${C_BOLD}s${C_RESET}${C_PINK} ♡${C_RESET}"
 }
 
-# Ask which parts to install. Sets INSTALL_MODE to "api" or "api+cf".
+# 询问要安装哪些部分。将 INSTALL_MODE 设为 "api" 或 "api+cf"。
 choose_install_mode() {
   printf '%b\n' ""
   printf '%b\n' "  ${C_CYAN}${C_BOLD}请选择安装内容${C_RESET}"
   printf '%b\n' "    ${C_LAV}1${C_RESET}) 仅安装 VPS 数据 API ${C_GREY}(默认; Cloudflare 之后可用 sf 部署)${C_RESET}"
-  printf '%b\n' "    ${C_LAV}2${C_RESET}) VPS 数据 API ${C_BOLD}+${C_RESET} Cloudflare 自动部署 ${C_GREY}(需 Cloudflare API Token)${C_RESET}"
+  printf '%b\n' "    ${C_LAV}2${C_RESET}) VPS 数据 API ${C_BOLD}+${C_RESET} Cloudflare 自动部署 ${C_GREY}(需 Cloudflare API 令牌)${C_RESET}"
   printf '%b' "  ${C_PINK}选择${C_RESET} ${C_GREY}[回车=默认 1]${C_RESET}: "
   local c; read -r c || c="1"
   case "${c}" in
@@ -145,8 +144,8 @@ choose_install_mode() {
   esac
 }
 
-# Offer to install/configure sing-box now. The data API reads the files the
-# bundled manager creates (/etc/sing-box*/), so this should run before first use.
+# 询问是否立即安装和配置 sing-box。数据 API 会读取内置管理器创建的文件
+#（/etc/sing-box*/），因此应在首次使用前运行此步骤。
 maybe_setup_singbox() {
   if singbox_installed; then
     info "检测到已安装的 sing-box，跳过首次安装（随时可运行 s 管理）。"
@@ -175,7 +174,7 @@ main() {
 
   choose_install_mode
 
-  # If already installed, preload existing values so the wizard pre-fills them.
+  # 如果已经安装，则预加载现有值，以便向导预先填入这些值。
   if is_installed; then
     info "检测到已安装的 subflow，向导将以现有配置为默认值。"
     load_env
@@ -194,13 +193,14 @@ main() {
   copy_runtime
   step "安装内置 sing-box 管理器…"
   install_singbox_manager || warn "sing-box 管理器安装未完成，可稍后用 s 重试。"
+  cleanup_legacy_telegram_runtime || warn "旧版 Telegram 运行组件清理未完成，请检查系统服务与 cron。"
   maybe_setup_singbox
   step "写入运行环境文件…"
   save_env
   step "安装 sf 快捷命令…"
   install_cli
-  step "写入 systemd 单元…"
-  write_systemd_unit
+  step "写入 ${INIT_SYSTEM} 服务定义…"
+  write_service_unit
   step "重载并启动服务…"
   reload_and_restart
 

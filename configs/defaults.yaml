@@ -21,7 +21,7 @@ paths:
   singbox_config: /etc/sing-box/config.json          # sing-box 主配置
   user_db: /etc/sing-box-manager/user-manager.json   # 多用户库（配额/用量计数）
   meta: /etc/sing-box-manager/meta.json              # 元数据（reality 公钥等）
-  telegram: /etc/sing-box-manager/telegram.json      # Telegram 集成状态
+  subscription_index: /etc/sing-box-manager/subscriptions.json # 面向订阅的数据索引
 
 # 数据 API（Python）默认监听地址/端口（仅在未设置对应环境变量时生效）。
 data_api:

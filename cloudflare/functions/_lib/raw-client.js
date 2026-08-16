@@ -5,6 +5,8 @@
  * 除了 JSON 解析之外，它不会对负载做任何解读，从而让调用方自行决定如何应对每种结果。
  */
 
+import { RAW_PAYLOAD_SCHEMA_VERSION } from "./constants.js";
+
 /** @typedef {{ kind: "ok", data: object } | { kind: "not-found" } | { kind: "error" }} RawResult */
 
 function buildRawUrl(config, username) {
@@ -21,7 +23,7 @@ function buildRawUrl(config, username) {
  *
  * @returns {Promise<RawResult>}
  */
-export async function fetchRawPayload(config, username, request) {
+export async function fetchRawPayload(config, username) {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), config.requestTimeoutMs);
 
@@ -30,10 +32,6 @@ export async function fetchRawPayload(config, username, request) {
 			authorization: `Bearer ${config.bearerToken}`,
 			accept: "application/json",
 		};
-		const userAgent = request?.headers?.get("user-agent");
-		if (userAgent) {
-			headers["user-agent"] = userAgent;
-		}
 
 		const response = await fetch(buildRawUrl(config, username), {
 			method: "GET",
@@ -49,6 +47,9 @@ export async function fetchRawPayload(config, username, request) {
 		}
 
 		const data = await response.json();
+		if (!data || data.schema_version !== RAW_PAYLOAD_SCHEMA_VERSION) {
+			return { kind: "error" };
+		}
 		if (!data || !Array.isArray(data.inbounds) || data.inbounds.length === 0) {
 			return { kind: "not-found" };
 		}

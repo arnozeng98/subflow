@@ -1,15 +1,16 @@
-# subflow documentation
+# subflow 文档
 
-Setup, deployment, and usage guides for subflow.
+这里汇总 subflow 的架构、部署、配置、安全和使用说明。
 
-| # | Guide | What it covers |
+| 编号 | 文档 | 内容 |
 | --- | --- | --- |
-| 01 | [Architecture](01-architecture.md) | How the VPS data API and Cloudflare gateway split responsibilities. |
-| 02 | [VPS deployment](02-vps-deployment.md) | Installing and verifying the private data API. |
-| 03 | [Cloudflare deployment](03-cloudflare-deployment.md) | Creating the Pages project and going live. |
-| 04 | [Secrets & configuration](04-secrets-and-config.md) | Every environment variable and how to set secrets. |
-| 05 | [Templates & rules](05-templates-and-rules.md) | Official rule sources, overrides, and caching. |
-| 06 | [Usage](06-usage.md) | Subscription link format, output formats, client import. |
+| 01 | [架构](01-architecture.md) | VPS 数据 API 与 Cloudflare 网关的职责划分。 |
+| 02 | [VPS 部署](02-vps-deployment.md) | 安装和验证私有数据 API。 |
+| 03 | [Cloudflare 部署](03-cloudflare-deployment.md) | 创建 Pages 项目、Tunnel 和公开订阅入口。 |
+| 04 | [密钥与配置](04-secrets-and-config.md) | 环境变量、默认值与密钥设置。 |
+| 05 | [模板与规则](05-templates-and-rules.md) | 官方规则源、模板覆盖与缓存。 |
+| 06 | [使用说明](06-usage.md) | 订阅 URL、输出格式与客户端导入。 |
+| 07 | [安全与数据契约](07-security-and-data-contract.md) | 跨层字段白名单、禁止字段和修改规则。 |
+| 08 | [管理器独立重写规格](08-clean-room-manager-spec.md) | 新 `s` 管理器的隔离要求、行为和验收门禁。 |
 
-New here? Read them in order. For an at-a-glance overview, start with the
-[project README](../README.md).
+首次使用请按编号顺序阅读；快速了解项目可先看[项目说明](../README.md)。

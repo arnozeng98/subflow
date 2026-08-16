@@ -3,4 +3,4 @@
 CONFIG_FILE="/etc/sing-box/config.json"
 USER_DB_FILE="/etc/sing-box-manager/user-manager.json"
 META_FILE="/etc/sing-box-manager/meta.json"
-TG_CONFIG_FILE="/etc/sing-box-manager/telegram.json"
+SUBSCRIPTION_INDEX_FILE="/etc/sing-box-manager/subscriptions.json"
