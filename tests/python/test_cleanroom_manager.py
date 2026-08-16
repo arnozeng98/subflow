@@ -112,6 +112,9 @@ class CleanroomManagerTests(unittest.TestCase):
       "ss-8388": {"public_key": "SS_UNUSED_PUBLIC_KEY"},
       "admin-8443": {"public_key": "ADMIN_PUBLIC_KEY", "private_key": "ADMIN_META_PRIVATE_KEY"},
     }), encoding="utf-8")
+    config_path.chmod(0o600)
+    users_path.chmod(0o600)
+    meta_path.chmod(0o600)
     meta_path.chmod(0o600)
 
   def _base_env(self, extra=None):
