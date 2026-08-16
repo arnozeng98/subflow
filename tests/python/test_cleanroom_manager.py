@@ -97,6 +97,7 @@ class CleanroomManagerTests(unittest.TestCase):
         },
       ],
     }), encoding="utf-8")
+    config_path.chmod(0o600)
     users_path.write_text(json.dumps({
       "schema_version": 1,
       "users": {
@@ -105,11 +106,13 @@ class CleanroomManagerTests(unittest.TestCase):
         "admin": {"enabled": True, "disabled_reason": None, "quota_gb": 0, "used_up_bytes": 0, "used_down_bytes": 0, "manual_added_bytes": 0, "last_live_up_bytes": 0, "last_live_down_bytes": 0, "last_reset_period": "", "reset_day": 0, "expire_at": "0", "allow_all_nodes": True, "nodes": []},
       },
     }), encoding="utf-8")
+    users_path.chmod(0o600)
     meta_path.write_text(json.dumps({
       "reality-443": {"public_key": "REALITY_PUBLIC_KEY", "private_key": "META_PRIVATE_KEY"},
       "ss-8388": {"public_key": "SS_UNUSED_PUBLIC_KEY"},
       "admin-8443": {"public_key": "ADMIN_PUBLIC_KEY", "private_key": "ADMIN_META_PRIVATE_KEY"},
     }), encoding="utf-8")
+    meta_path.chmod(0o600)
 
   def _base_env(self, extra=None):
     env = os.environ.copy()
