@@ -1,0 +1,23 @@
+{
+  "name": "subflow",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p cloudflare/admin/tsconfig.json",
+    "test": "tsx --test cloudflare/tests/*.test.ts",
+    "build": "npm run typecheck && tsx cloudflare/build.ts",
+    "deploy:central": "tsx cloudflare/deploy-central.ts",
+    "dev:central": "npm run build && tsx cloudflare/dev.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261028.1",
+    "@types/node": "24.10.1",
+    "esbuild": "0.25.12",
+    "miniflare": "5.20261023.1-beta",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "wrangler": "4.154.0"
+  }
+}

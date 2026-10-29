@@ -1,0 +1,13 @@
+{
+  "paths": {
+    "singbox_config": "/etc/sing-box/config.json",
+    "user_db": "/etc/sing-box-manager/user-manager.json",
+    "meta": "/etc/sing-box-manager/meta.json",
+    "lock": "/var/lock/singbox-manager.lock"
+  },
+  "data_api": {
+    "listen_host": "127.0.0.1",
+    "listen_port": 28080
+  },
+  "business_timezone": "Asia/Shanghai"
+}

@@ -1,0 +1,65 @@
+name: Release subflow
+
+on:
+  push:
+    tags:
+      - 'subflow-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: go mod download all
+      - name: Check source and bootstrap
+        run: |
+          test -z "$(gofmt -l cmd internal configs)"
+          bash -n deploy/install.sh
+          shellcheck deploy/install.sh
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Package release
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: go run ./cmd/release -version "$RELEASE_VERSION" -out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subflow-release
+          path: |
+            dist/subflow-linux-amd64.tar.gz
+            dist/subflow-linux-arm64.tar.gz
+            dist/sha256sum.txt
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/subflow-v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: subflow-release
+          path: dist
+      - name: Publish application release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --latest --title "subflow $RELEASE_TAG" --generate-notes

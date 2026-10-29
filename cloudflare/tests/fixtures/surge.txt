@@ -1,0 +1,41 @@
+# Subflow profile: Subflow
+
+[General]
+loglevel = notify
+dns-server = 223.5.5.5, 119.29.29.29, system
+skip-proxy = 127.0.0.1, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, *.local
+ipv6 = true
+allow-wifi-access = false
+internet-test-url = http://www.apple.com/library/test/success.html
+proxy-test-url = http://www.gstatic.com/generate_204
+
+[Proxy]
+osaka = ss, 203.0.113.10, 8388, encrypt-method=2022-blake3-aes-128-gcm, password=SERVERPW:USERPW, udp-relay=true
+cdn = vmess, 203.0.113.10, 443, username=22222222-2222-4222-8222-222222222222, tls=true, vmess-aead=true, ws=true, ws-path=/wspath?ed=2048, sni=vm.example.com, ws-headers=Host:vm.example.com, skip-cert-verify=false, udp-relay=true, tfo=false
+fast = tuic-v5, 203.0.113.10, 2053, password=tuicpw, sni=tuic.example.com, uuid=44444444-4444-4444-8444-444444444444, alpn=h3, ecn=true
+trojan = trojan, 203.0.113.10, 9443, password=test+password, skip-cert-verify=true, sni=trojan.example.com
+anytls "東京" = anytls, 203.0.113.10, 8443, password=anytls-test, skip-cert-verify=true, sni=anytls.example.com
+
+[Proxy Group]
+🚀 节点选择 = select, ♻️ 自动选择, DIRECT, osaka, cdn, fast, trojan, anytls "東京"
+♻️ 自动选择 = url-test, osaka, cdn, fast, trojan, anytls "東京", url = http://www.gstatic.com/generate_204, interval = 300, tolerance = 50
+📲 电报信息 = select, 🚀 节点选择, DIRECT, osaka, cdn, fast, trojan, anytls "東京"
+🍎 苹果服务 = select, DIRECT, 🚀 节点选择
+Ⓜ️ 微软服务 = select, DIRECT, 🚀 节点选择
+🛑 全球拦截 = select, REJECT, DIRECT
+🎯 全球直连 = select, DIRECT, 🚀 节点选择
+🐟 漏网之鱼 = select, 🚀 节点选择, DIRECT
+
+[Rule]
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Advertising/Advertising.list,🛑 全球拦截
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Apple/Apple.list,🍎 苹果服务
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Microsoft/Microsoft.list,Ⓜ️ 微软服务
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Telegram/Telegram.list,📲 电报信息
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Google/Google.list,🚀 节点选择
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Global/Global.list,🚀 节点选择
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/China/China.list,🎯 全球直连
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/ChinaMax/ChinaMax.list,🎯 全球直连
+RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Surge/Lan/Lan.list,🎯 全球直连
+GEOIP,CN,🎯 全球直连
+FINAL,🐟 漏网之鱼,dns-failed
+

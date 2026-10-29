@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/arnozeng98/subflow/contracts/raw.schema.json",
+  "title": "Subflow raw subscription response",
+  "type": "object",
+  "required": ["schema_version", "username", "enabled", "usage", "inbounds", "meta", "public_ip", "ws_domains"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "username": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "enabled": {"type": "boolean"},
+    "usage": {
+      "type": "object",
+      "required": ["username", "enabled", "disabled_reason", "quota_gb", "used_up_bytes", "used_down_bytes", "manual_added_bytes", "last_reset_period", "reset_day", "expire_at"],
+      "properties": {
+        "username": {"type": "string"},
+        "enabled": {"type": "boolean"},
+        "disabled_reason": {"type": ["string", "null"]},
+        "quota_gb": {"type": "number", "minimum": 0},
+        "used_up_bytes": {"type": "integer"},
+        "used_down_bytes": {"type": "integer"},
+        "manual_added_bytes": {"type": "integer"},
+        "last_reset_period": {"type": "string"},
+        "reset_day": {"type": "integer", "minimum": 0, "maximum": 32},
+        "expire_at": {"type": "string"}
+      }
+    },
+    "inbounds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["tag", "users"],
+        "properties": {
+          "tag": {"type": "string"},
+          "type": {"type": "string"},
+          "users": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["public_key"],
+        "properties": {"public_key": {"type": "string"}},
+        "additionalProperties": false
+      }
+    },
+    "public_ip": {"type": "string"},
+    "ws_domains": {
+      "type": "object",
+      "required": ["vless", "vmess"],
+      "properties": {"vless": {"type": "string"}, "vmess": {"type": "string"}}
+    }
+  }
+}

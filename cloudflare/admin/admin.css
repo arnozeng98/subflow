@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; font: 15px/1.6 system-ui, sans-serif; }
+body { margin: 0; background: #f3f5f8; color: #182338; }
+header { background: #172b4d; color: white; padding: 24px max(24px, calc((100vw - 1200px) / 2)); }
+main { max-width: 1200px; margin: 24px auto; padding: 0 20px 40px; }
+h1, h2, h3, p { margin: 12px 0; }
+form, details, fieldset { padding: 16px; border: 1px solid #cad4e2; border-radius: 8px; margin: 16px 0; background: white; }
+label { display: inline-flex; flex-direction: column; gap: 4px; margin: 8px 16px 8px 0; vertical-align: top; }
+button, input, select, textarea { font: inherit; border: 1px solid #a3b2c7; border-radius: 5px; padding: 7px 10px; background: white; color: inherit; }
+button { cursor: pointer; color: #1555a2; margin: 4px; }
+button:hover { background: #e9f2ff; }
+button:disabled { opacity: .5; cursor: wait; }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { text-align: left; border-bottom: 1px solid #dce3ed; padding: 10px; vertical-align: top; white-space: pre-line; }
+th { background: #e5edf7; }
+.scroll { overflow-x: auto; }
+#message { min-height: 24px; font-weight: 600; white-space: pre-wrap; }
+#message.error { color: #ad1c2d; }
+#secret { box-sizing: border-box; width: 100%; }
+#summary { font-size: 1.3rem; font-weight: 600; }
+select[multiple] { min-width: 200px; }
+[hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) {
+  body { background: #111925; color: #e1e8f2; }
+  form, details, fieldset, table, input, select, textarea, button { background: #1c2b40; }
+  th { background: #233b59; }
+  button { color: #9ac7ff; }
+  button:hover { background: #27466c; }
+  #message.error { color: #ff9b9b; }
+}

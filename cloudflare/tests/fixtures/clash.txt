@@ -1,0 +1,231 @@
+# Subflow profile: Subflow
+
+port: 7890
+socks-port: 7891
+mixed-port: 7892
+allow-lan: true
+mode: rule
+log-level: info
+ipv6: true
+external-controller: 127.0.0.1:9090
+dns:
+  enable: true
+  ipv6: true
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://dns.google/dns-query
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+
+proxies:
+  - {name: "東京", type: vless, server: 203.0.113.10, port: 443, uuid: 11111111-1111-4111-8111-111111111111, network: tcp, udp: true, tls: true, flow: xtls-rprx-vision, servername: www.icloud.com, reality-opts: {public-key: PBKEY123, short-id: 'abcd'}, client-fingerprint: chrome}
+  - {name: "osaka", type: ss, server: 203.0.113.10, port: 8388, cipher: 2022-blake3-aes-128-gcm, password: "SERVERPW:USERPW", udp: true}
+  - {name: "cdn", type: vmess, server: 203.0.113.10, port: 443, uuid: 22222222-2222-4222-8222-222222222222, alterId: 0, cipher: auto, udp: true, tls: true, network: ws, servername: vm.example.com, ws-opts: {path: "/wspath", headers: {Host: vm.example.com, max-early-data: 2048, early-data-header-name: Sec-WebSocket-Protocol}}}
+  - {name: "vless-cdn", type: vless, server: 203.0.113.10, port: 443, uuid: 33333333-3333-4333-8333-333333333333, udp: true, tls: true, network: ws, servername: ws.example.com, ws-opts: {path: "/vless?ed=1024", headers: {Host: ws.example.com, max-early-data: 2048, early-data-header-name: Sec-WebSocket-Protocol}}}
+  - {name: "fast", type: tuic, server: 203.0.113.10, port: 2053, uuid: 44444444-4444-4444-8444-444444444444, password: tuicpw, alpn: [h3], disable-sni: false, reduce-rtt: false, udp-relay-mode: native, congestion-controller: bbr, skip-cert-verify: true, sni: tuic.example.com}
+  - {name: "trojan", type: trojan, server: 203.0.113.10, port: 9443, password: "test+password", client-fingerprint: chrome, udp: true, sni: "trojan.example.com", alpn: [h2, http/1.1], skip-cert-verify: true}
+  - {name: "anytls \"東京\"", type: anytls, server: 203.0.113.10, port: 8443, password: "anytls-test", client-fingerprint: chrome, udp: true, sni: "anytls.example.com", alpn: [h2, http/1.1], skip-cert-verify: true}
+
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    proxies:
+      - "♻️ 自动选择"
+      - "🎯 全球直连"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: ♻️ 自动选择
+    type: url-test
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+    proxies:
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: 🌍 国外媒体
+    type: select
+    proxies:
+      - "🚀 节点选择"
+      - "♻️ 自动选择"
+      - "🎯 全球直连"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: 📲 电报信息
+    type: select
+    proxies:
+      - "🚀 节点选择"
+      - "🎯 全球直连"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: Ⓜ️ 微软服务
+    type: select
+    proxies:
+      - "🎯 全球直连"
+      - "🚀 节点选择"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: 🍎 苹果服务
+    type: select
+    proxies:
+      - "🎯 全球直连"
+      - "🚀 节点选择"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+  - name: 🎯 全球直连
+    type: select
+    proxies:
+      - "DIRECT"
+      - "REJECT"
+  - name: 🛑 全球拦截
+    type: select
+    proxies:
+      - "REJECT"
+      - "DIRECT"
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies:
+      - "🚀 节点选择"
+      - "🎯 全球直连"
+      - "♻️ 自动选择"
+      - "東京"
+      - "osaka"
+      - "cdn"
+      - "vless-cdn"
+      - "fast"
+      - "trojan"
+      - "anytls \"東京\""
+
+rule-providers:
+  reject:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/reject.txt"
+    path: ./ruleset/reject.yaml
+    interval: 86400
+  icloud:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/icloud.txt"
+    path: ./ruleset/icloud.yaml
+    interval: 86400
+  apple:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/apple.txt"
+    path: ./ruleset/apple.yaml
+    interval: 86400
+  google:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt"
+    path: ./ruleset/google.yaml
+    interval: 86400
+  proxy:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt"
+    path: ./ruleset/proxy.yaml
+    interval: 86400
+  direct:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt"
+    path: ./ruleset/direct.yaml
+    interval: 86400
+  private:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt"
+    path: ./ruleset/private.yaml
+    interval: 86400
+  gfw:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/gfw.txt"
+    path: ./ruleset/gfw.yaml
+    interval: 86400
+  tld-not-cn:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/tld-not-cn.txt"
+    path: ./ruleset/tld-not-cn.yaml
+    interval: 86400
+  telegramcidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt"
+    path: ./ruleset/telegramcidr.yaml
+    interval: 86400
+  cncidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt"
+    path: ./ruleset/cncidr.yaml
+    interval: 86400
+  lancidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt"
+    path: ./ruleset/lancidr.yaml
+    interval: 86400
+  applications:
+    type: http
+    behavior: classical
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/applications.txt"
+    path: ./ruleset/applications.yaml
+    interval: 86400
+
+rules:
+  - RULE-SET,applications,🎯 全球直连
+  - RULE-SET,private,🎯 全球直连
+  - RULE-SET,reject,🛑 全球拦截
+  - RULE-SET,icloud,🍎 苹果服务
+  - RULE-SET,apple,🍎 苹果服务
+  - RULE-SET,google,🚀 节点选择
+  - RULE-SET,proxy,🚀 节点选择
+  - RULE-SET,gfw,🚀 节点选择
+  - RULE-SET,tld-not-cn,🚀 节点选择
+  - RULE-SET,telegramcidr,📲 电报信息,no-resolve
+  - RULE-SET,direct,🎯 全球直连
+  - RULE-SET,lancidr,🎯 全球直连,no-resolve
+  - RULE-SET,cncidr,🎯 全球直连,no-resolve
+  - GEOIP,LAN,🎯 全球直连,no-resolve
+  - GEOIP,CN,🎯 全球直连,no-resolve
+  - MATCH,🐟 漏网之鱼
+

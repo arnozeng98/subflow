@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "username": "alice",
+  "enabled": true,
+  "usage": {
+    "username": "alice",
+    "enabled": true,
+    "disabled_reason": null,
+    "quota_gb": 100,
+    "used_up_bytes": 1000000000,
+    "used_down_bytes": 2000000000,
+    "manual_added_bytes": 0,
+    "last_reset_period": "2026-10",
+    "reset_day": 1,
+    "expire_at": "2027-01-01"
+  },
+  "public_ip": "203.0.113.10",
+  "ws_domains": {"vless": "ws.example.com", "vmess": "vm.example.com"},
+  "meta": {"reality-in": {"public_key": "PBKEY123"}},
+  "inbounds": [
+    {
+      "tag": "reality-in",
+      "type": "vless",
+      "listen_port": 443,
+      "tls": {"server_name": "www.example.com", "reality": {"enabled": true, "short_id": ["abcd"]}},
+      "users": [{"name": "tokyo@alice", "uuid": "00000000-0000-4000-8000-000000000001", "flow": "xtls-rprx-vision"}]
+    },
+    {
+      "tag": "ss-in",
+      "type": "shadowsocks",
+      "listen_port": 8388,
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "MDEyMzQ1Njc4OWFiY2RlZg==",
+      "users": [{"name": "osaka@alice", "password": "ZmVkY2JhOTg3NjU0MzIxMA=="}]
+    },
+    {
+      "tag": "vmessws-in",
+      "type": "vmess",
+      "listen_port": 12345,
+      "transport": {"type": "ws", "path": "/wspath"},
+      "tls": {"server_name": "fallback.example.com"},
+      "users": [{"name": "cdn@alice", "uuid": "00000000-0000-4000-8000-000000000002"}]
+    },
+    {
+      "tag": "tuic-in",
+      "type": "tuic",
+      "listen_port": 2053,
+      "tls": {"server_name": "tuic.example.com"},
+      "users": [{"name": "fast@alice", "uuid": "00000000-0000-4000-8000-000000000003", "password": "example-only-password"}]
+    }
+  ]
+}

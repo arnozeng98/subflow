@@ -1,0 +1,11 @@
+* text=auto
+*.go text eol=lf
+*.ts text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.sql text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+# Golden fixtures preserve exact generated output, including terminal blank lines.
+cloudflare/tests/fixtures/*.txt text eol=lf whitespace=-blank-at-eof

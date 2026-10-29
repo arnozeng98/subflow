@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Subflow 中央管理</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script type="module" src="/admin.js"></script>
+</head>
+<body>
+  <header><h1>Subflow 中央管理</h1><p>多服务器 · 全局用户配额 · Bandwagon 套餐统计</p></header>
+  <main>
+    <form id="login"><label>管理员密钥 <input name="token" type="password" required minlength="32" autocomplete="off"></label><button>登录</button></form>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="dashboard" hidden>
+      <nav><button id="refresh">刷新</button><button id="logout">退出</button></nav>
+      <p id="summary"></p><p id="freshness"></p>
+      <details><summary>一次性凭据输出（关闭页面后不保存）</summary><textarea id="secret" readonly rows="4" aria-label="一次性凭据"></textarea></details>
+      <h2>服务器</h2>
+      <p>离线或失败不会显示为零用量。暂停服务器会停止中央授权，节点应用后生效。各服务器账期可能不同。</p>
+      <div class="scroll"><table><thead><tr><th>名称 / ID</th><th>状态</th><th>配置</th><th>套餐已用 / 剩余</th><th>下次重置 / 采集</th><th>操作</th></tr></thead><tbody id="servers"></tbody></table></div>
+      <form id="server-create"><label>服务器名称 <input name="name" required maxlength="80"></label><button>创建并获取注册凭证</button></form>
+      <details><summary>Bandwagon API 配置</summary>
+        <form id="vendor">
+          <label>服务器 <select name="server" id="vendor-server" required></select></label>
+          <label>VEID <input name="veid" required inputmode="numeric" pattern="[0-9]+"></label>
+          <label>KiwiVM API Key <input name="api_key" type="password" required autocomplete="off"></label>
+          <button>加密保存</button>
+        </form>
+      </details>
+      <h2>用户</h2>
+      <p>普通用户配额跨服务器共享。admin 无个人计量，订阅显示服务器套餐汇总。停用和权限变更在节点同步后生效。</p>
+      <div class="scroll"><table><thead><tr><th>用户</th><th>状态 / 账期</th><th>已用 / 剩余</th><th>已占用额度（含待消费）</th><th>到期</th><th>操作</th></tr></thead><tbody id="users"></tbody></table></div>
+      <form id="user-edit">
+        <h3 id="user-heading">创建用户</h3>
+        <label>用户名 <input name="username" required pattern="[A-Za-z0-9_\-]{1,64}" maxlength="64"></label>
+        <label>总配额 GiB <input name="quota" type="number" min="0" step="0.01" value="100" required></label>
+        <label><input name="enabled" type="checkbox" checked>启用</label>
+        <label>到期日期（上海时间零点，空为永久）<input name="expires" type="date"></label>
+        <label>每月重置日（0=手动，1–31，32=月末）<input name="reset_day" type="number" min="0" max="32" value="0" required></label>
+        <fieldset><legend>服务器 / 节点授权（按 Ctrl 或 Command 多选）</legend><div id="permissions"></div></fieldset>
+        <button>保存用户</button><button type="button" id="new-user">切换为创建</button>
+      </form>
+      <h2>最近操作</h2><ul id="audit"></ul>
+    </section>
+  </main>
+</body>
+</html>
