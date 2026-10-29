@@ -33,11 +33,13 @@ export async function subscription(request: Request, env: CentralEnv, token: str
 	}
 	if (!nodes.length) throw new HTTPError(503, "no recently synchronized nodes");
 	let usedUp = 0, usedDown = 0, total = user.quota_bytes;
+	let includeUsage = true;
 	if (user.username === "admin") {
 		const servers = await env.DB.prepare("SELECT vendor_total,vendor_used,vendor_updated,vendor_reset,vendor_error FROM servers WHERE retired=0")
 			.all<ServerRow>();
 		const summary = vendorSummary(servers.results, now);
-		if (!summary.complete) throw new HTTPError(503, "server traffic is incomplete or stale");
+		// Provider statistics are optional metadata, not node readiness.
+		includeUsage = summary.complete;
 		usedDown = summary.used;
 		total = summary.total;
 	} else {
@@ -51,5 +53,5 @@ export async function subscription(request: Request, env: CentralEnv, token: str
 	const format = negotiateFormat(new URL(request.url).searchParams.get("format"), request.headers.get("user-agent"), config.defaultFormat);
 	const output = await generate(format, nodes, config);
 	const usage = `upload=${usedUp}; download=${usedDown}; total=${total}${user.expires_at ? `; expire=${user.expires_at}` : ""}`;
-	return subscriptionResponse(output.body, output.contentType, "no-store", usage);
+	return subscriptionResponse(output.body, output.contentType, "no-store", includeUsage ? usage : undefined);
 }

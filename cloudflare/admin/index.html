@@ -26,11 +26,12 @@
           <label>服务器 <select name="server" id="vendor-server" required></select></label>
           <label>VEID <input name="veid" required inputmode="numeric" pattern="[0-9]+"></label>
           <label>KiwiVM API Key <input name="api_key" type="password" required autocomplete="off"></label>
-          <button>加密保存</button>
+          <button>加密保存并采集</button>
+          <p>API 为可选配置，不影响订阅节点。保存后立即验证并采集；失败原因显示在服务器列表中。</p>
         </form>
       </details>
       <h2>用户</h2>
-      <p>普通用户配额跨服务器共享。admin 无个人计量，订阅显示服务器套餐汇总。停用和权限变更在节点同步后生效。</p>
+      <p>普通用户配额跨服务器共享。admin 无个人计量，套餐统计完整时订阅显示汇总，未配置 API 或采集异常时仍可订阅节点。停用和权限变更在节点同步后生效。</p>
       <div class="scroll"><table><thead><tr><th>用户</th><th>状态 / 账期</th><th>已用 / 剩余</th><th>已占用额度（含待消费）</th><th>到期</th><th>操作</th></tr></thead><tbody id="users"></tbody></table></div>
       <form id="user-edit">
         <h3 id="user-heading">创建用户</h3>

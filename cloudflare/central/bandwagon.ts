@@ -9,24 +9,34 @@ export interface VendorTraffic {
 	multiplier: number;
 }
 
+// Only these locally constructed messages may be shown to administrators.
+// Never forward provider messages or transport errors that can echo API keys.
+class VendorError extends Error {}
+
 function numeric(value: unknown, name: string): number {
 	if ((typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") {
-		throw new Error(`KiwiVM missing ${name}`);
+		throw new VendorError(`KiwiVM missing ${name}`);
 	}
 	const result = Number(value);
-	if (!Number.isFinite(result) || result < 0) throw new Error(`KiwiVM invalid ${name}`);
+	if (!Number.isFinite(result) || result < 0) throw new VendorError(`KiwiVM invalid ${name}`);
 	return result;
 }
 
 export function parseTraffic(value: unknown): VendorTraffic {
-	if (!isRecord(value) || value.error !== 0) throw new Error("KiwiVM API reported failure");
+	if (!isRecord(value)) throw new VendorError("KiwiVM response must be a JSON object");
+	const code = value.error;
+	if (code !== 0 && code !== "0") {
+		const safeCode = typeof code === "number" && Number.isSafeInteger(code) ? String(code) :
+			typeof code === "string" && /^\d{1,6}$/.test(code) ? code : "unknown";
+		throw new VendorError(`KiwiVM API error ${safeCode}; check VEID, API key and API access restrictions`);
+	}
 	const multiplier = numeric(value.monthly_data_multiplier, "monthly_data_multiplier");
-	if (multiplier <= 0) throw new Error("KiwiVM invalid multiplier");
+	if (multiplier <= 0) throw new VendorError("KiwiVM invalid multiplier");
 	const total = Math.floor(numeric(value.plan_monthly_data, "plan_monthly_data") * multiplier);
 	const used = Math.floor(numeric(value.data_counter, "data_counter") * multiplier);
 	const reset = numeric(value.data_next_reset, "data_next_reset");
 	if (![total, used, reset].every(Number.isSafeInteger) || reset <= 0) {
-		throw new Error("KiwiVM traffic or reset exceeds supported range");
+		throw new VendorError("KiwiVM traffic or reset exceeds supported range");
 	}
 	return { total, used, reset, multiplier };
 }
@@ -43,11 +53,14 @@ export async function collectServer(env: CentralEnv, server: ServerRow, now: num
 			redirect: "manual",
 			signal: AbortSignal.timeout(15000),
 		});
-		if (!response.ok) throw new Error(`KiwiVM HTTP ${response.status}`);
+		if (!response.ok) throw new VendorError(`KiwiVM HTTP ${response.status}; check provider availability and API access restrictions`);
 		phase = "decode";
 		const raw = await response.text();
-		if (raw.length > 256 * 1024) throw new Error("KiwiVM response too large");
-		const traffic = parseTraffic(JSON.parse(raw));
+		if (raw.length > 256 * 1024) throw new VendorError("KiwiVM response too large");
+		let value: unknown;
+		try { value = JSON.parse(raw); }
+		catch { throw new VendorError("KiwiVM returned invalid JSON; provider may be unavailable or blocking the request"); }
+		const traffic = parseTraffic(value);
 		phase = "persistence";
 		await env.DB.prepare(`UPDATE servers SET vendor_total=?,vendor_used=?,vendor_reset=?,
 			vendor_multiplier=?,vendor_updated=?,vendor_error=NULL WHERE id=? AND vendor_secret=?`)
@@ -55,8 +68,13 @@ export async function collectServer(env: CentralEnv, server: ServerRow, now: num
 	} catch (error) {
 		// Provider bodies and transport URLs can contain credentials; never persist them.
 		console.error("Bandwagon collection failed", { server: server.id, phase, errorType: error instanceof Error ? error.name : "unknown" });
+		const detail = error instanceof VendorError ? error.message : phase === "credential" ?
+			"KiwiVM credential decryption failed; verify the central encryption key and save the API key again" :
+			phase === "request" ? "KiwiVM request failed or timed out; check provider availability" :
+			phase === "persistence" ? "KiwiVM statistics could not be saved; retry collection" :
+			"KiwiVM response could not be read; retry collection";
 		await env.DB.prepare("UPDATE servers SET vendor_error=? WHERE id=? AND vendor_secret=?")
-			.bind("Bandwagon collection failed; check credentials and provider availability", server.id, server.vendor_secret).run();
+			.bind(detail, server.id, server.vendor_secret).run();
 	}
 }
 

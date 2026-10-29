@@ -2,6 +2,7 @@ interface Server {
 	id: string; name: string; enabled: number; enrolled: number; last_seen: number | null;
 	applied_revision: number; inventory: string; vendor_total: number | null; vendor_used: number | null;
 	vendor_reset: number | null; vendor_updated: number | null; vendor_error: string | null;
+	vendor_configured: number;
 }
 interface User {
 	username: string; enabled: number; quota_bytes: number; period: number; up: number; down: number;
@@ -101,11 +102,14 @@ async function refresh() {
 		cell(row, !server.enabled ? "已暂停" : !server.enrolled ? "待注册" :
 			server.last_seen && data.now - server.last_seen < 180 ? "在线" : "离线");
 		cell(row, `${server.applied_revision} / ${data.revision}\n${date(server.last_seen)}`);
-		cell(row, server.vendor_total === null || server.vendor_used === null ? "待采集" :
+		cell(row, !server.vendor_configured ? "未配置 API（订阅可用）" : server.vendor_total === null || server.vendor_used === null ? "待采集" :
 			`${bytes(server.vendor_used)} / ${bytes(Math.max(0, server.vendor_total - server.vendor_used))}`);
 		cell(row, `${date(server.vendor_reset)}\n${date(server.vendor_updated)}\n${server.vendor_error || ""}`);
 		const controls = cell(row, "");
-		action(controls, "采集", async () => { await api(`servers/${server.id}/collect`, "POST", {}); await refresh(); });
+		if (server.vendor_configured) action(controls, "采集", async () => {
+			try { await api(`servers/${server.id}/collect`, "POST", {}); }
+			finally { await refresh(); }
+		});
 		action(controls, server.enabled ? "暂停" : "启用", async () => {
 			if (!confirm("变更服务器状态？停用将在下次同步生效，已发放额度不会转给其他服务器。")) return;
 			await api(`servers/${server.id}`, "PUT", { name: server.name, enabled: !server.enabled }); await refresh();
@@ -167,7 +171,10 @@ element("vendor", HTMLFormElement).addEventListener("submit", event => {
 	event.preventDefault(); const form = element("vendor", HTMLFormElement), values = new FormData(form);
 	void execute(async () => {
 		await api(`servers/${values.get("server")}/vendor`, "PUT", { veid: values.get("veid"), api_key: values.get("api_key") });
-		form.reset(); await refresh();
+		const server = values.get("server");
+		form.reset();
+		try { await api(`servers/${server}/collect`, "POST", {}); }
+		finally { await refresh(); }
 	});
 });
 userForm.addEventListener("submit", event => {
