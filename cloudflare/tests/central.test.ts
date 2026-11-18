@@ -135,6 +135,20 @@ test("central HTTP and real D1 transactions: enrollment, shared quota, retries, 
 	assert.equal(subscription.status, 200, await subscription.clone().text());
 	assert.equal(subscription.headers.get("subscription-userinfo"), "upload=10; download=20; total=100");
 	assert.equal(subscription.headers.get("cache-control"), "no-store");
+	const serverName = "\u{1F1E8}\u{1F1E6} test-host";
+	await admin("servers/" + a.id, "PUT", { name: serverName, enabled: true });
+	const namedSubscription = await request(`${user.subscription_path}?format=singbox`);
+	assert.equal(namedSubscription.status, 200, "renaming keeps the existing subscription link valid");
+	const namedConfig: unknown = await namedSubscription.json();
+	assert.ok(isRecord(namedConfig) && Array.isArray(namedConfig.outbounds));
+	const namedNodes = namedConfig.outbounds.filter(isRecord).filter(outbound => typeof outbound.server === "string");
+	assert.ok(namedNodes.length > 0);
+	for (const outbound of namedNodes) {
+		assert.equal(typeof outbound.tag, "string");
+		assert.ok(outbound.tag === serverName || String(outbound.tag).startsWith(`${serverName} / `));
+		assert.ok(!String(outbound.tag).includes(String(outbound.server)), "node labels must not contain their IP address");
+		assert.ok(!String(outbound.tag).includes(String(a.id)), "unique hostnames do not need server IDs");
+	}
 	assert.equal((await request("/alice")).status, 404);
 	const oldPath = String(user.subscription_path);
 	const rotated = await admin("users/alice/token", "POST", {});

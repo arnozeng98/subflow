@@ -621,6 +621,9 @@ func TestInstallActivatesOnlyEnrolledAgent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a := testApp(t)
 			active := map[string]bool{}
+			if tc.active {
+				active["subflow-sync.timer"] = true
+			}
 			fakeSystem(t, a, active, nil)
 			source := filepath.Join(a.o.RootDir, "release")
 			fixtureAssets(t, source)
@@ -646,6 +649,9 @@ func TestInstallActivatesOnlyEnrolledAgent(t *testing.T) {
 			}
 			if active["subflow-agent.service"] != tc.active {
 				t.Fatalf("agent active=%v; want %v", active["subflow-agent.service"], tc.active)
+			}
+			if active["subflow-sync.timer"] == tc.active {
+				t.Fatalf("standalone sync timer active=%v with enrolled=%v", active["subflow-sync.timer"], tc.active)
 			}
 		})
 	}

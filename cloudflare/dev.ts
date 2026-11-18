@@ -20,7 +20,8 @@ const mf = new Miniflare(convertV4MiniflareOptions({
 			serviceBindings: {
 				CENTRAL: "central",
 				ASSETS: async request => {
-					const path = new URL(request.url).pathname;
+					const pathname = new URL(request.url).pathname;
+					const path = pathname === "/" ? "/index.html" : pathname;
 					const assets: Record<string, string> = { "/index.html": "text/html; charset=utf-8", "/admin.js": "text/javascript; charset=utf-8", "/admin.css": "text/css; charset=utf-8" };
 					if (!assets[path]) return new LocalResponse("Not Found", { status: 404 });
 					const content = await readFile(resolve("cloudflare", "dist", path.slice(1)), "utf8");

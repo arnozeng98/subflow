@@ -27,8 +27,12 @@ export async function subscription(request: Request, env: CentralEnv, token: str
 		const allowed: unknown = JSON.parse(row.nodes);
 		if (!Array.isArray(allowed) || !allowed.every(n => typeof n === "string")) throw new Error("corrupt stored permission");
 		payload.inbounds = payload.inbounds.filter(inbound => allowed.includes("*") || (inbound.tag !== undefined && allowed.includes(inbound.tag)));
-		for (const [index, node] of buildNodes(payload).entries()) {
-			nodes.push({ ...node, name: `${row.name} [${row.id.slice(0, 8)}] / ${node.name} #${index + 1}` });
+		const serverNodes = buildNodes(payload);
+		const serverName = rows.results.filter(server => server.name === row.name).length > 1
+			? `${row.name} [${row.id}]` : row.name;
+		for (const [index, node] of serverNodes.entries()) {
+			const name = serverNodes.length === 1 ? serverName : `${serverName} / ${node.protocol} #${index + 1}`;
+			nodes.push({ ...node, name });
 		}
 	}
 	if (!nodes.length) throw new HTTPError(503, "no recently synchronized nodes");

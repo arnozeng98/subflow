@@ -49,16 +49,24 @@ test("central Pages routing forwards agents and subscriptions, disables username
 		const url = typeof request === "string" ? request : request instanceof Request ? request.url : request.toString();
 		calls.push(url); return Response.json({ ok: true });
 	} };
-	const assets: Pick<Fetcher, "fetch"> = { fetch: async () => new Response("<html>test UI</html>", { headers: { "content-type": "text/html" } }) };
+	const assets: Pick<Fetcher, "fetch"> = { fetch: async (request: RequestInfo | URL) => {
+		const url = new URL(request instanceof Request ? request.url : request.toString());
+		if (url.pathname === "/index.html") return Response.redirect(new URL("/", url).toString(), 308);
+		if (url.pathname !== "/") return new Response("Not Found", { status: 404 });
+		return new Response("<html>test UI</html>", { headers: { "content-type": "text/html" } });
+	} };
 	const environment: WorkerEnv = { CENTRAL: central, ASSETS: assets };
 	for (const path of ["/agent/enroll", "/agent/sync", "/admin/overview", "/s/" + "a".repeat(64)]) {
 		assert.equal((await worker.fetch(new Request("https://sub.example" + path), environment, ctx)).status, 200);
 	}
 	assert.equal(calls.length, 4);
 	assert.equal((await worker.fetch(new Request("https://sub.example/alice"), environment, ctx)).status, 404);
-	const ui = await worker.fetch(new Request("https://sub.example/manage"), environment, ctx);
-	assert.equal(ui.status, 200);
-	assert.equal(ui.headers.get("cache-control"), "no-store");
-	assert.match(ui.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
-	assert.equal(await ui.text(), "<html>test UI</html>");
+	for (const path of ["/", "/manage"]) {
+		const ui = await worker.fetch(new Request("https://sub.example" + path), environment, ctx);
+		assert.equal(ui.status, 200);
+		assert.equal(ui.headers.get("location"), null);
+		assert.equal(ui.headers.get("cache-control"), "no-store");
+		assert.match(ui.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
+		assert.equal(await ui.text(), "<html>test UI</html>");
+	}
 });

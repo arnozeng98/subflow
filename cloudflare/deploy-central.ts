@@ -21,7 +21,7 @@ export function deploymentConfig(databaseID: string, accountID: string, project:
 			triggers: { crons: ["*/10 * * * *"] },
 		},
 		pages: {
-			name: project, account_id: accountID, compatibility_date: "2026-06-08",
+			name: project, compatibility_date: "2026-06-08",
 			pages_build_output_dir: join(root, "cloudflare", "dist"),
 			services: [{ binding: "CENTRAL", service: worker }],
 		},
@@ -32,6 +32,14 @@ function required(name: string): string {
 	const value = process.env[name]?.trim();
 	if (!value) throw new Error(`Missing ${name}`);
 	return value;
+}
+
+export function pagesOrigin(project: unknown): string {
+	if (!isRecord(project) || typeof project.subdomain !== "string" ||
+		!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.pages\.dev$/.test(project.subdomain)) {
+		throw new Error("Cloudflare returned an invalid Pages subdomain");
+	}
+	return `https://${project.subdomain}`;
 }
 
 async function cloudflare(path: string, token: string, method = "GET", payload?: unknown): Promise<unknown> {
@@ -59,6 +67,20 @@ function wrangler(args: string[], stdin?: string): Promise<void> {
 	});
 }
 
+export async function centralReady(origin: string): Promise<boolean> {
+	const responses = await Promise.all(["/healthz", "/manage", "/admin.js", "/admin.css"].map(path =>
+		fetch(origin + path, { redirect: "error", signal: AbortSignal.timeout(15000) })));
+	const [healthResponse, ...assets] = responses;
+	if (!healthResponse || !responses.every(response => response.ok)) return false;
+	const health: unknown = await healthResponse.json();
+	const assetTypes = ["text/html", "javascript", "text/css"];
+	return isRecord(health) && health.ok === true && health.version === 1 &&
+		assets.every((response, index) => {
+			const expected = assetTypes[index];
+			return expected !== undefined && (response.headers.get("content-type") || "").includes(expected);
+		});
+}
+
 export async function deployCentral(): Promise<void> {
 	const token = required("CLOUDFLARE_API_TOKEN"), account = required("CLOUDFLARE_ACCOUNT_ID");
 	const adminToken = required("SUBFLOW_ADMIN_TOKEN"), credentialKey = required("SUBFLOW_CREDENTIAL_KEY");
@@ -83,13 +105,14 @@ export async function deployCentral(): Promise<void> {
 	const config = deploymentConfig(database, account, project, worker);
 	const projects = await cloudflare(`/accounts/${account}/pages/projects`, token);
 	if (!Array.isArray(projects)) throw new Error("Invalid Pages project listing");
-	const existing = projects.find(p => isRecord(p) && p.name === project);
+	let existing = projects.find(p => isRecord(p) && p.name === project);
 	if (!existing) {
 		if (!initialize) throw new Error("Pages project does not exist; use --initialize");
-		await cloudflare(`/accounts/${account}/pages/projects`, token, "POST", { name: project, production_branch: "main" });
+		existing = await cloudflare(`/accounts/${account}/pages/projects`, token, "POST", { name: project, production_branch: "main" });
 	} else if (isRecord(existing) && existing.source) {
 		throw new Error("Use a Direct Upload Pages project; do not mix Git-connected and Actions deployment");
 	}
+	const origin = pagesOrigin(existing);
 	const stage = await mkdtemp(join(tmpdir(), "subflow-central-deploy-"));
 	try {
 		const workerConfig = join(stage, "worker.json"), pagesConfig = join(stage, "wrangler.json");
@@ -103,13 +126,10 @@ export async function deployCentral(): Promise<void> {
 		await wrangler(["secret", "bulk", "--config", workerConfig], JSON.stringify({ ADMIN_TOKEN: adminToken, CREDENTIAL_KEY: credentialKey }));
 		await wrangler(["pages", "deploy", join(root, "cloudflare", "dist"), "--project-name", project,
 			"--branch", "main", "--cwd", stage, "--commit-dirty=true"]);
-		const url = `https://${project}.pages.dev/healthz`;
 		let healthy = false;
 		for (let attempt = 0; attempt < 6; attempt++) {
 			try {
-				const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
-				const health: unknown = await response.json();
-				healthy = response.ok && isRecord(health) && health.ok === true && health.version === 1;
+				healthy = await centralReady(origin);
 			} catch {
 				console.error(`Readiness check attempt ${attempt + 1} failed`);
 			}
@@ -117,7 +137,7 @@ export async function deployCentral(): Promise<void> {
 			await new Promise(resolvePromise => setTimeout(resolvePromise, 5000));
 		}
 		if (!healthy) throw new Error("Deployment uploaded, but central readiness check failed");
-		console.log(`Central deployment ready: https://${project}.pages.dev/manage`);
+		console.log(`Central deployment ready: ${origin}/manage`);
 		console.log(`Set repository variable SUBFLOW_D1_DATABASE_ID=${database} for future deployments.`);
 		console.log("Keep SUBFLOW_CREDENTIAL_KEY unchanged: replacing it without re-encryption makes existing vendor credentials unreadable.");
 	} finally {

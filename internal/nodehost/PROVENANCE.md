@@ -35,6 +35,14 @@ with the verified 1.14.4 kernel enabled. Export tests check all eight protocols,
 TLS/Reality/WS/SS2022 mapping, aliases, permissions, IPv6, reserved names,
 secret exclusion, and explicit rejection of unsupported formats/protocols.
 These are Go projection tests, not a live Mihomo client interoperability test.
+The live statistics startup-race follow-up read only the independently authored
+nodehost source/tests. It adds post-restart bounded RPC readiness and diagnostic
+error preservation; no server access, legacy source, or new external source was
+used. Regression tests cover delayed readiness, immediate established-runtime
+failure, deadline quarantine, and the non-injected native HTTP/2 default client
+with empty counters, status errors, and connection-error preservation.
+The complete package race suite passed with the verified 1.14.4 kernel enabled
+(75.1% statement coverage); vet and scoped whitespace checks passed.
 
 ## Official sources consulted
 

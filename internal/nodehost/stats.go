@@ -44,19 +44,23 @@ func QueryStats(ctx context.Context, address string) ([]Stat, error) {
 	req.Header.Set("TE", "trailers")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("stats RPC connection failed")
+		return nil, fmt.Errorf("stats RPC connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return nil, errors.New("stats RPC read failed")
+		return nil, fmt.Errorf("stats RPC read failed: %w", err)
 	}
 	status := resp.Trailer.Get("Grpc-Status")
 	if status == "" {
 		status = resp.Header.Get("Grpc-Status")
 	}
 	if resp.StatusCode != 200 || resp.ProtoMajor != 2 || status != "0" {
-		return nil, errors.New("stats RPC returned failure or missing status")
+		safeStatus := "missing/invalid"
+		if code, err := strconv.Atoi(status); err == nil && code >= 0 && code <= 16 {
+			safeStatus = strconv.Itoa(code)
+		}
+		return nil, fmt.Errorf("stats RPC returned failure: HTTP %d, HTTP/%d, grpc-status %s", resp.StatusCode, resp.ProtoMajor, safeStatus)
 	}
 	if len(body) < 5 || body[0] != 0 || int(binary.BigEndian.Uint32(body[1:5])) != len(body)-5 {
 		return nil, errors.New("invalid stats gRPC frame")
@@ -152,13 +156,13 @@ func (h *host) sample(ctx context.Context) error {
 	if err != nil {
 		h.db.StatsBlocked = true
 		quarantine(&h.db, nil)
-		fmt.Fprintln(h.errOut, "ERROR: traffic accounting unavailable; stopping ordinary-user access")
+		fmt.Fprintf(h.errOut, "ERROR: traffic accounting unavailable; stopping ordinary-user access: %v\n", err)
 		// Stop first: even if disk is full, no unmetered service is left running.
-		stopErr := h.command(ctx, "stop")
+		stopErr := h.command(context.WithoutCancel(ctx), "stop")
 		if stopErr == nil {
 			h.db.RuntimeStopped = true
 		}
-		return errors.Join(errors.New("traffic statistics failed (fail closed)"), stopErr, state.WriteJSON(h.opts.Config.UserDBPath, h.db))
+		return errors.Join(fmt.Errorf("traffic statistics failed (fail closed): %w", err), stopErr, state.WriteJSON(h.opts.Config.UserDBPath, h.db))
 	}
 	if raw, e := h.execute(ctx, "systemctl", "show", "sing-box.service", "--property=MainPID", "--value"); e == nil {
 		id := strings.TrimSpace(string(raw))
@@ -243,7 +247,7 @@ func (h *host) readStats(ctx context.Context) ([]Stat, error) {
 		}
 		select {
 		case <-probeCtx.Done():
-			return nil, errors.New("restricted runtime statistics probe failed")
+			return nil, fmt.Errorf("runtime statistics startup probe failed: %w", errors.Join(probeCtx.Err(), err))
 		case <-time.After(100 * time.Millisecond):
 		}
 	}

@@ -353,8 +353,8 @@ func TestAgentBootstrapAccountsAndStartsRestricted(t *testing.T) {
 	if err := h.bootstrap(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.db.Users["alice"].Up != 50 || !h.db.ProbeRequired {
-		t.Fatal("bootstrap discarded existing counters")
+	if h.db.Users["alice"].Up != 50 || h.db.ProbeRequired {
+		t.Fatal("bootstrap discarded existing counters or did not complete its startup probe")
 	}
 	if err := h.enforce(context.Background()); err != nil {
 		t.Fatal(err)

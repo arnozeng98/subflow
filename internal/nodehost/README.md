@@ -59,6 +59,19 @@ Root `sync` runs local accounting/maintenance until a nonempty enrolled
 sync timer in standalone and central modes, including empty or pending
 `.central` files without spurious “not enrolled” errors.
 
+Accounted configuration/service restarts with ordinary credentials now persist
+a startup-probe marker and complete a bounded (at most five seconds) statistics
+readiness probe before returning. `systemctl restart` alone does not establish
+RPC readiness. A successful empty counter response is valid. Later established
+runtime RPC failures receive no startup retry grace: access is stopped and the
+uncertain periods remain quarantined. A failed post-commit startup probe retains
+the committed configuration/user state, stopped and quarantined, rather than
+rolling back newly recorded startup usage. Safety stopping has its own bounded
+command context even if the caller's context expired.
+Statistics use native Go HTTP/2 cleartext gRPC, not curl, grpcurl, or another
+executable. Error diagnostics retain transport/read causes and numeric HTTP/gRPC
+status, but never print response bodies or `grpc-message` contents.
+
 Required runtime:
 
 - Debian/systemd; installed `sing-box` and `systemctl` on a trusted root PATH.

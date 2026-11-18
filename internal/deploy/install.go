@@ -245,7 +245,7 @@ func (a *app) install(ctx context.Context, f arguments, update bool) error {
 				return fmt.Errorf("invalid agent enrollment state: %w", err)
 			}
 			if enrollment.ServerID != "" {
-				active = append(active, "subflow-agent.service")
+				active = []string{"subflow.service", "subflow-maintenance.timer", "subflow-agent.service"}
 			}
 		}
 		for _, name := range sortedKeys(managed) {
@@ -287,6 +287,13 @@ func (a *app) install(ctx context.Context, f arguments, update bool) error {
 		for _, name := range sortedKeys(managed) {
 			if err := t.write(a.path(unitDir+name), managed[name], 0644); err != nil {
 				return err
+			}
+		}
+		for _, name := range active {
+			if name == "subflow-agent.service" {
+				if err := a.cmd(ctx, "systemctl", "disable", "--now", "subflow-sync.timer"); err != nil {
+					return err
+				}
 			}
 		}
 		if err := a.migrateCron(ctx, t); err != nil {

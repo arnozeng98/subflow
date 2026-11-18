@@ -18,7 +18,7 @@ export default {
 			}
 			if (request.method === "GET" && ["/", "/manage", "/admin.js", "/admin.css"].includes(path) && env.ASSETS) {
 				const url = new URL(request.url);
-				if (path === "/" || path === "/manage") url.pathname = "/index.html";
+				if (path === "/" || path === "/manage") url.pathname = "/";
 				const asset = await env.ASSETS.fetch(new Request(url, request));
 				const response = new Response(asset.body, asset);
 				response.headers.set("cache-control", "no-store");

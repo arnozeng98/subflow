@@ -24,8 +24,10 @@ cannot receive instant revocation. Rejoining requires a new server identity.
 1. Add the existing domain to Cloudflare and finish nameserver delegation at the
    registrar. Wait for the zone to become **Active**. Preserve website, MX, TXT
    and other existing DNS records.
-2. Deploy and test using `<project>.pages.dev` first; no custom DNS change is
-   needed for initial validation.
+2. Deploy and test using the Pages-assigned `pages.dev` hostname first; no
+   custom DNS change is needed for initial validation. The assigned hostname
+   may include a collision suffix and need not equal `<project>.pages.dev`;
+   use the verified management URL printed by the deployment command.
 3. In **Pages / Custom domains**, attach, for example, `panel.example.com` and
    `sub.example.com` to the same project. Use Cloudflare's instructed CNAME
    records and wait for domain/certificate validation. Do not point these names
@@ -78,7 +80,8 @@ printed by the workflow as `SUBFLOW_D1_DATABASE_ID` for future runs.
 
 The job tests/builds, applies forward migrations, validates the encryption-key
 fingerprint, deploys the Worker and its secrets, deploys Pages and checks
-`/healthz`. It never deletes a database. Failed deployments can leave an already
+`/healthz`, `/manage` and its JavaScript/CSS assets without following redirects.
+It never deletes a database. Failed deployments can leave an already
 applied schema migration or published Worker; this is not an all-platform
 transaction. Back up D1 before production schema changes.
 
@@ -96,6 +99,7 @@ On the VPS, save that token in a root-only file without putting it in shell
 history or the command line. Then run:
 
 ```bash
+sudo systemctl disable --now subflow-sync.timer
 subflow agent enroll --url https://subflow.pages.dev --token-file /root/subflow-enrollment-token
 subflow enable --service agent
 subflow start --service agent
@@ -112,6 +116,13 @@ The installer writes, but does not start, the agent service on an unenrolled
 host. Updates restart it when an enrolled server ID exists. Stopping or failing
 the agent service stops sing-box as a fail-closed safety measure. Use a staging
 server to validate this behavior before production deployment.
+
+The managed agent owns both five-second local accounting and approximately
+one-minute central synchronization. Managed installations disable the standalone
+`subflow-sync.timer` to avoid overlapping central requests; the maintenance
+timer may remain. Do not run manual `agent sync` concurrently with `agent run`.
+If enrollment fails before the managed agent is enabled, restore the standalone
+sync timer while resolving the failure.
 
 In managed mode, user policy comes from the central system. Local diagnostic,
 protocol and routing operations remain available; conflicting local user/quota
@@ -161,17 +172,26 @@ field descriptions; direct official-document retrieval and live account comparis
 were not available during implementation. **Compare one live response against
 the KiwiVM panel before treating these values as billing-verified.**
 
-Cron collects every ten minutes; a manual refresh is available. Failure preserves
+Saving credentials in the UI immediately attempts collection and displays a safe
+diagnostic on failure (provider error code, HTTP status, invalid response fields,
+decryption failure, or request failure). Provider messages and keys are never
+included in these diagnostics. Cron collects every ten minutes; a manual refresh is available. Failure preserves
 the last success and marks an error. A reset that has passed, an error, absent
 data, or data older than thirty minutes makes the aggregate incomplete.
 
-The admin subscription returns 503 rather than inventing a zero balance when
-the aggregate is incomplete. Other users' subscriptions do not depend on the
-vendor API. Current vendor balances across different billing cycles are summed;
+Vendor API configuration is optional. The admin subscription still returns nodes
+when the aggregate is incomplete, omitting `Subscription-Userinfo` rather than
+inventing a zero balance or publishing partial totals as a fleet balance.
+Other users' subscriptions do not depend on the vendor API. Current vendor balances across different billing cycles are summed;
 they are not interchangeable credit between servers. Over-quota servers contribute
 zero remaining, never a negative amount that reduces another server's balance.
 
 ## Subscriptions and readiness
+
+Set each server's display name to its country flag and hostname to label nodes
+without an IP address. A server with one node uses this name directly; multiple
+nodes append their protocol and index. Duplicate server names also include the
+server identity to keep client node names unique. Renaming does not rotate links.
 
 The UI creates/rotates `/s/<256-bit-random-token>` links. Only token hashes are
 stored, and links are shown once. Existing username-only routes are disabled when

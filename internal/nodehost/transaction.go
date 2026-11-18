@@ -229,6 +229,11 @@ func (h *host) mutate(ctx context.Context, change func() error) error {
 	h.db.Counters = map[string]int64{}
 	h.db.RuntimeID = ""
 	h.db.RuntimeStopped = held
+	if !held && h.hasOrdinary() {
+		// systemctl restart may return before the statistics listener is ready.
+		// Persist the startup marker, then probe before returning to the caller.
+		h.db.ProbeRequired = true
+	}
 	for _, f := range []struct {
 		p string
 		v any
@@ -244,6 +249,9 @@ func (h *host) mutate(ctx context.Context, change func() error) error {
 	}
 	if err := state.WriteJSON(h.journalPath(), journal{Committed: true}); err != nil {
 		return rollback(err)
+	}
+	if !held {
+		return h.sample(ctx)
 	}
 	return nil
 }
